@@ -53,6 +53,13 @@ enum MaintenanceStatus {
   RESOLVED
 }
 
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 enum AuditStatus {
   DRAFT
   ACTIVE
@@ -264,6 +271,8 @@ model MaintenanceRequest {
   title        String            @db.VarChar(160)
   description  String
   status       MaintenanceStatus @default(PENDING)
+  priority     MaintenancePriority @default(MEDIUM)
+  attachments  Json?
   scheduledAt  DateTime?
   resolvedAt   DateTime?
   asset        Asset             @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)

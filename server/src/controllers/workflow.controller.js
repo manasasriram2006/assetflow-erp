@@ -40,18 +40,18 @@ export const bookings = {
 };
 
 export const maintenance = {
-  list: async (req, res) =>
-    res.json(
-      await prisma.maintenanceRequest.findMany({
-        include: { asset: true, requester: true, technician: true },
-        orderBy: { createdAt: "desc" }
-      })
-    ),
+  list: async (req, res) => res.json(await workflow.listMaintenanceRequests()),
+  history: async (req, res) => res.json(await workflow.maintenanceHistory()),
   create: async (req, res) =>
     res.status(201).json(
       await workflow.createMaintenance({ ...req.validated.body, requesterId: req.user.id }, req.user.id)
     ),
-  updateStatus: async (req, res) => res.json(await workflow.updateMaintenanceStatus(req.params.id, req.body, req.user.id))
+  updateStatus: async (req, res) =>
+    res.json(await workflow.updateMaintenanceStatus(req.params.id, req.validated.body, req.user.id)),
+  assignTechnician: async (req, res) =>
+    res.json(await workflow.assignMaintenanceTechnician(req.params.id, req.validated.body, req.user.id)),
+  uploadAttachment: async (req, res) =>
+    res.json(await workflow.uploadMaintenanceAttachment(req.params.id, req.validated.body, req.user.id))
 };
 
 export const audits = {

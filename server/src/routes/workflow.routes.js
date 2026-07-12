@@ -9,7 +9,10 @@ import {
   auditBody,
   bookingBody,
   bookingQuery,
+  maintenanceAssignBody,
+  maintenanceAttachmentBody,
   maintenanceBody,
+  maintenanceStatusBody,
   transferBody,
   transferDecisionBody
 } from "../validators/domain.validators.js";
@@ -67,12 +70,24 @@ bookingRoutes.post(
 export const maintenanceRoutes = Router();
 maintenanceRoutes.use(authenticate);
 maintenanceRoutes.get("/", asyncHandler(maintenance.list));
+maintenanceRoutes.get("/history", asyncHandler(maintenance.history));
 maintenanceRoutes.post("/", validate(z.object({ body: maintenanceBody })), asyncHandler(maintenance.create));
 maintenanceRoutes.patch(
   "/:id/status",
   authorize("ADMIN", "ASSET_MANAGER"),
-  validate(idParam),
+  validate(z.object({ params: idParam.shape.params, body: maintenanceStatusBody })),
   asyncHandler(maintenance.updateStatus)
+);
+maintenanceRoutes.patch(
+  "/:id/technician",
+  authorize("ADMIN", "ASSET_MANAGER"),
+  validate(z.object({ params: idParam.shape.params, body: maintenanceAssignBody })),
+  asyncHandler(maintenance.assignTechnician)
+);
+maintenanceRoutes.post(
+  "/:id/attachments",
+  validate(z.object({ params: idParam.shape.params, body: maintenanceAttachmentBody })),
+  asyncHandler(maintenance.uploadAttachment)
 );
 
 export const auditRoutes = Router();

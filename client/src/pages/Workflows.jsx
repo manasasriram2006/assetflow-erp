@@ -2,13 +2,26 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FiBell, FiCheck, FiChevronLeft, FiChevronRight, FiRefreshCw, FiRotateCcw, FiSend, FiX } from "react-icons/fi";
+import {
+  FiBell,
+  FiCheck,
+  FiChevronLeft,
+  FiChevronRight,
+  FiPaperclip,
+  FiRefreshCw,
+  FiRotateCcw,
+  FiSend,
+  FiTool,
+  FiUpload,
+  FiX
+} from "react-icons/fi";
 import { Button } from "../components/Button";
 import { DataTable, Status } from "../components/DataTable";
 import { Field, inputClass } from "../components/Input";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { useApiResource } from "../hooks/useApiResource";
+import { api } from "../services/api";
 import { resourceApi, workflowApi } from "../services/resources";
 import { formatDate } from "../utils/format";
 
@@ -59,6 +72,14 @@ const bookingSchema = z
     path: ["endsAt"]
   });
 
+const maintenanceSchema = z.object({
+  assetId: z.string().min(1, "Asset is required"),
+  title: z.string().trim().min(3, "Title is required").max(160),
+  description: z.string().trim().min(5, "Description is required").max(2000),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  scheduledAt: z.preprocess((value) => (value === "" ? undefined : value), z.string().optional())
+});
+
 const canApprove = (role) => ["ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"].includes(role);
 
 const toMonthInput = (date) => date.toISOString().slice(0, 7);
@@ -68,6 +89,18 @@ const addMonths = (date, amount) => new Date(date.getFullYear(), date.getMonth()
 const sameDay = (a, b) => a.toDateString() === b.toDateString();
 const formatDateTime = (value) =>
   value ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+const publicUrl = (url) => {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `${api.defaults.baseURL}${url}`;
+};
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
 
 function AllocationModule({ initialTab = "allocations" }) {
   const { user } = useAuth();
@@ -480,6 +513,255 @@ function BookingModule() {
   );
 }
 
+function MaintenanceModule() {
+  const { user } = useAuth();
+  const [message, setMessage] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [technicianId, setTechnicianId] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const assets = useApiResource(() => assetApi.list({ limit: 100 }), []);
+  const users = useApiResource(userApi.list, []);
+  const requests = useApiResource(workflowApi.maintenance, []);
+  const history = useApiResource(workflowApi.maintenanceHistory, []);
+  const form = useForm({
+    resolver: zodResolver(maintenanceSchema),
+    defaultValues: { assetId: "", title: "", description: "", priority: "MEDIUM", scheduledAt: "" }
+  });
+
+  const refreshAll = () => {
+    assets.refresh();
+    requests.refresh();
+    history.refresh();
+  };
+
+  const canManage = canApprove(user?.role);
+  const rows = requests.data || [];
+  const selected = rows.find((row) => row.id === selectedId) || rows[0];
+  const technicians = users.data || [];
+  const maintainableAssets = (assets.data?.items || []).filter((asset) => !["LOST", "RETIRED", "DISPOSED"].includes(asset.status));
+
+  const onCreate = async (values) => {
+    await workflowApi.requestMaintenance({ ...values, scheduledAt: values.scheduledAt || undefined });
+    form.reset({ assetId: "", title: "", description: "", priority: "MEDIUM", scheduledAt: "" });
+    setMessage("Maintenance request created");
+    refreshAll();
+  };
+
+  const updateStatus = async (request, status) => {
+    await workflowApi.updateMaintenanceStatus(request.id, { status, notes: notes || undefined });
+    setMessage(`Maintenance ${status.replaceAll("_", " ").toLowerCase()}`);
+    setNotes("");
+    refreshAll();
+  };
+
+  const assignTechnician = async () => {
+    if (!selected || !technicianId) return;
+    await workflowApi.assignMaintenanceTechnician(selected.id, {
+      technicianId,
+      scheduledAt: scheduledAt || undefined,
+      notes: notes || undefined
+    });
+    setMessage("Technician assigned");
+    setTechnicianId("");
+    setScheduledAt("");
+    setNotes("");
+    refreshAll();
+  };
+
+  const uploadAttachment = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!selected || !file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage("Attachment must be smaller than 5MB");
+      return;
+    }
+    const attachmentData = await readFileAsDataUrl(file);
+    await workflowApi.uploadMaintenanceAttachment(selected.id, { fileName: file.name, attachmentData });
+    setMessage("Attachment uploaded");
+    refreshAll();
+  };
+
+  const requestColumns = [
+    { key: "asset", header: "Asset", render: (row) => row.asset?.assetTag || "-" },
+    { key: "title", header: "Issue" },
+    { key: "priority", header: "Priority", render: (row) => <Status value={row.priority} /> },
+    { key: "requester", header: "Requester", render: (row) => row.requester?.name || "-" },
+    { key: "technician", header: "Technician", render: (row) => row.technician?.name || "-" },
+    { key: "status", header: "Status", render: (row) => <Status value={row.status} /> },
+    {
+      key: "actions",
+      header: "",
+      render: (row) => (
+        <Button type="button" variant="secondary" className="px-3 py-1.5" onClick={() => setSelectedId(row.id)}>
+          View
+        </Button>
+      )
+    }
+  ];
+
+  const historyColumns = [
+    { key: "asset", header: "Asset", render: (row) => row.asset?.assetTag || "-" },
+    { key: "action", header: "Action", render: (row) => row.action?.replaceAll("_", " ") },
+    { key: "actor", header: "By", render: (row) => row.actor?.name || "System" },
+    { key: "notes", header: "Notes", render: (row) => row.notes || "-" },
+    { key: "createdAt", header: "Date", render: (row) => formatDateTime(row.createdAt) }
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Maintenance"
+        description="Review requests, approve work, assign technicians, track progress, resolve issues, and retain maintenance history."
+        actions={
+          <Button variant="secondary" onClick={refreshAll}>
+            <FiRefreshCw /> Refresh
+          </Button>
+        }
+      />
+      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
+      {[assets.error, users.error, requests.error, history.error].filter(Boolean).map((error) => (
+        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {error}
+        </div>
+      ))}
+
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+          <Field label="Asset" error={form.formState.errors.assetId?.message}>
+            <select className={inputClass} {...form.register("assetId")}>
+              <option value="">Select asset</option>
+              {maintainableAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.assetTag} - {asset.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Priority" error={form.formState.errors.priority?.message}>
+            <select className={inputClass} {...form.register("priority")}>
+              {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Title" error={form.formState.errors.title?.message}>
+            <input className={inputClass} {...form.register("title")} />
+          </Field>
+          <Field label="Description" error={form.formState.errors.description?.message}>
+            <textarea className={`${inputClass} min-h-24 resize-y`} {...form.register("description")} />
+          </Field>
+          <Field label="Scheduled At" error={form.formState.errors.scheduledAt?.message}>
+            <input type="datetime-local" className={inputClass} {...form.register("scheduledAt")} />
+          </Field>
+          <Button disabled={form.formState.isSubmitting}>
+            <FiTool /> Request Maintenance
+          </Button>
+        </form>
+
+        <section className="grid gap-4">
+          <DataTable columns={requestColumns} rows={rows} empty="No maintenance requests found" />
+
+          {selected ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{selected.asset?.assetTag}</p>
+                  <h2 className="text-lg font-bold text-slate-950">{selected.title}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{selected.description}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Status value={selected.priority} />
+                  <Status value={selected.status} />
+                </div>
+              </div>
+
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <Field label="Technician">
+                  <select className={inputClass} value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} disabled={!canManage}>
+                    <option value="">Select technician</option>
+                    {technicians.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Scheduled At">
+                  <input type="datetime-local" className={inputClass} value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} disabled={!canManage} />
+                </Field>
+                <Field label="Notes">
+                  <input className={inputClass} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!canManage} />
+                </Field>
+              </div>
+
+              <div className="mb-4 flex flex-wrap gap-2">
+                {canManage && selected.status === "PENDING" ? (
+                  <>
+                    <Button type="button" onClick={() => updateStatus(selected, "APPROVED")}>
+                      <FiCheck /> Approve
+                    </Button>
+                    <Button type="button" variant="danger" onClick={() => updateStatus(selected, "REJECTED")}>
+                      <FiX /> Reject
+                    </Button>
+                  </>
+                ) : null}
+                {canManage && ["APPROVED", "TECHNICIAN_ASSIGNED"].includes(selected.status) ? (
+                  <Button type="button" variant="secondary" onClick={assignTechnician}>
+                    <FiTool /> Assign Technician
+                  </Button>
+                ) : null}
+                {canManage && ["APPROVED", "TECHNICIAN_ASSIGNED"].includes(selected.status) ? (
+                  <Button type="button" onClick={() => updateStatus(selected, "IN_PROGRESS")}>
+                    In Progress
+                  </Button>
+                ) : null}
+                {canManage && ["TECHNICIAN_ASSIGNED", "IN_PROGRESS"].includes(selected.status) ? (
+                  <Button type="button" onClick={() => updateStatus(selected, "RESOLVED")}>
+                    Resolve
+                  </Button>
+                ) : null}
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                  <FiUpload /> Attachment
+                  <input type="file" className="hidden" onChange={uploadAttachment} />
+                </label>
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-sm font-bold text-slate-950">Attachments</h3>
+                <div className="flex flex-wrap gap-2">
+                  {(selected.attachments || []).length ? (
+                    selected.attachments.map((item) => (
+                      <a
+                        key={item.id || item.url}
+                        href={publicUrl(item.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        <FiPaperclip /> {item.name}
+                      </a>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No attachments uploaded</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <section className="mt-4">
+        <DataTable columns={historyColumns} rows={history.data || []} empty="No maintenance history found" />
+      </section>
+    </div>
+  );
+}
+
 function GenericWorkflow({ type }) {
   const [title, description] = titles[type] || titles.allocation;
   const assets = useApiResource(() => assetApi.list({ limit: 100 }), []);
@@ -597,5 +879,6 @@ export default function Workflows({ type = "allocation" }) {
   if (type === "allocation") return <AllocationModule initialTab="allocations" />;
   if (type === "transfers") return <AllocationModule initialTab="transfer" />;
   if (type === "bookings") return <BookingModule />;
+  if (type === "maintenance") return <MaintenanceModule />;
   return <GenericWorkflow type={type} />;
 }

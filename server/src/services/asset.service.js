@@ -6,7 +6,7 @@ import { prisma } from "../config/prisma.js";
 import { HttpError, notFound } from "../utils/httpError.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const assetUploadDir = path.resolve(__dirname, "../uploads/assets");
+const assetUploadDir = path.resolve(__dirname, "../../uploads/assets");
 const publicAssetUploadPath = "/uploads/assets";
 const searchableFields = ["name", "assetTag", "serialNo", "location"];
 const assetSelectFields = ["name", "serialNo", "status", "value", "purchaseDate", "location", "categoryId", "departmentId"];

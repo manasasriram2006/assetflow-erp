@@ -61,7 +61,11 @@ export const workflowApi = {
   cancelBooking: (id) => api.post(`/bookings/${id}/cancel`).then((res) => res.data),
   sendBookingReminders: () => api.post("/bookings/reminders").then((res) => res.data),
   maintenance: () => api.get("/maintenance").then((res) => res.data),
+  maintenanceHistory: () => api.get("/maintenance/history").then((res) => res.data),
   requestMaintenance: (payload) => api.post("/maintenance", payload).then((res) => res.data),
+  updateMaintenanceStatus: (id, payload) => api.patch(`/maintenance/${id}/status`, payload).then((res) => res.data),
+  assignMaintenanceTechnician: (id, payload) => api.patch(`/maintenance/${id}/technician`, payload).then((res) => res.data),
+  uploadMaintenanceAttachment: (id, payload) => api.post(`/maintenance/${id}/attachments`, payload).then((res) => res.data),
   audits: () => api.get("/audits").then((res) => res.data),
   createAudit: (payload) => api.post("/audits", payload).then((res) => res.data)
 };

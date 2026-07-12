@@ -1,6 +1,14 @@
 import { prisma } from "../config/prisma.js";
 import { HttpError, notFound } from "../utils/httpError.js";
 import { assertAssetAvailable, setAssetStatus } from "./asset.service.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const maintenanceUploadDir = path.resolve(__dirname, "../../uploads/maintenance");
+const publicMaintenanceUploadPath = "/uploads/maintenance";
 
 const activeAllocationInclude = {
   asset: { select: { id: true, assetTag: true, name: true, status: true } },
@@ -210,6 +218,20 @@ const releaseAssetIfNoActiveBookings = async (tx, assetId, actorId, notes = "Boo
   }
 };
 
+const statusAfterMaintenance = async (tx, assetId) => {
+  const activeAllocation = await tx.allocation.findFirst({
+    where: { assetId, deletedAt: null, status: "ACTIVE" },
+    select: { id: true }
+  });
+  if (activeAllocation) return "ALLOCATED";
+
+  const activeBooking = await tx.booking.findFirst({
+    where: { assetId, deletedAt: null, status: { in: activeBookingStatuses } },
+    select: { id: true }
+  });
+  return activeBooking ? "RESERVED" : "AVAILABLE";
+};
+
 export const listBookings = async ({ status, from, to } = {}) => {
   await prisma.$transaction(async (tx) => {
     await updateBookingStatuses(tx);
@@ -338,34 +360,202 @@ export const sendBookingReminders = async (actorId) => {
   return { sent: bookings.length, bookings };
 };
 
-export const createMaintenance = async ({ assetId, requesterId, title, description, scheduledAt }, actorId) => {
+const maintenanceInclude = {
+  asset: { select: { id: true, assetTag: true, name: true, status: true } },
+  requester: { select: { id: true, name: true, email: true } },
+  technician: { select: { id: true, name: true, email: true } }
+};
+
+const maintenanceActions = [
+  "MAINTENANCE_REQUESTED",
+  "MAINTENANCE_APPROVED",
+  "MAINTENANCE_REJECTED",
+  "MAINTENANCE_TECHNICIAN_ASSIGNED",
+  "MAINTENANCE_IN_PROGRESS",
+  "MAINTENANCE_RESOLVED",
+  "MAINTENANCE_ATTACHMENT_UPLOADED"
+];
+
+const assertMaintenanceTransition = (from, to) => {
+  const allowed = {
+    PENDING: ["APPROVED", "REJECTED"],
+    APPROVED: ["TECHNICIAN_ASSIGNED", "IN_PROGRESS", "REJECTED"],
+    TECHNICIAN_ASSIGNED: ["IN_PROGRESS", "RESOLVED", "REJECTED"],
+    IN_PROGRESS: ["RESOLVED", "REJECTED"],
+    REJECTED: [],
+    RESOLVED: []
+  };
+  if (from === to) return;
+  if (!allowed[from]?.includes(to)) throw new HttpError(409, `Cannot change maintenance status from ${from} to ${to}`);
+};
+
+const maintenanceActionFor = (status) =>
+  ({
+    APPROVED: "MAINTENANCE_APPROVED",
+    REJECTED: "MAINTENANCE_REJECTED",
+    TECHNICIAN_ASSIGNED: "MAINTENANCE_TECHNICIAN_ASSIGNED",
+    IN_PROGRESS: "MAINTENANCE_IN_PROGRESS",
+    RESOLVED: "MAINTENANCE_RESOLVED"
+  })[status] || "MAINTENANCE_UPDATED";
+
+export const listMaintenanceRequests = () =>
+  prisma.maintenanceRequest.findMany({
+    where: { deletedAt: null },
+    include: maintenanceInclude,
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }]
+  });
+
+export const maintenanceHistory = () =>
+  prisma.assetHistory.findMany({
+    where: { action: { in: maintenanceActions } },
+    include: {
+      asset: { select: { id: true, assetTag: true, name: true } },
+      actor: { select: { id: true, name: true, email: true } }
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100
+  });
+
+export const createMaintenance = async ({ assetId, requesterId, title, description, priority, scheduledAt }, actorId) => {
+  const asset = await prisma.asset.findFirst({ where: { id: assetId, deletedAt: null } });
+  if (!asset) throw notFound("Asset");
+  if (["LOST", "RETIRED", "DISPOSED"].includes(asset.status)) {
+    throw new HttpError(409, `Maintenance cannot be requested while asset is ${asset.status}`);
+  }
+
   return prisma.$transaction(async (tx) => {
     const request = await tx.maintenanceRequest.create({
-      data: { assetId, requesterId, title, description, scheduledAt }
+      data: { assetId, requesterId, title, description, priority, scheduledAt, attachments: [] }
     });
     await setAssetStatus(tx, assetId, "MAINTENANCE", actorId, "MAINTENANCE_REQUESTED", title);
-    return request;
+    await tx.notification.create({
+      data: {
+        userId: requesterId,
+        type: "MAINTENANCE_APPROVED",
+        title: "Maintenance request submitted",
+        message: `${asset.assetTag} maintenance request is pending review.`
+      }
+    });
+    return tx.maintenanceRequest.findUnique({ where: { id: request.id }, include: maintenanceInclude });
   });
 };
 
 export const updateMaintenanceStatus = async (id, data, actorId) => {
-  const request = await prisma.maintenanceRequest.findUnique({ where: { id } });
-  if (!request) throw notFound("Maintenance request");
+  const request = await prisma.maintenanceRequest.findUnique({ where: { id }, include: maintenanceInclude });
+  if (!request || request.deletedAt) throw notFound("Maintenance request");
+  assertMaintenanceTransition(request.status, data.status);
+
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.maintenanceRequest.update({ where: { id }, data });
-    if (data.status === "RESOLVED") {
-      await setAssetStatus(tx, request.assetId, "AVAILABLE", actorId, "MAINTENANCE_RESOLVED", request.title);
+    const updated = await tx.maintenanceRequest.update({
+      where: { id },
+      data: {
+        status: data.status,
+        technicianId: data.technicianId === undefined ? undefined : data.technicianId,
+        scheduledAt: data.scheduledAt === undefined ? undefined : data.scheduledAt,
+        resolvedAt: data.status === "RESOLVED" ? new Date() : undefined
+      }
+    });
+
+    if (data.status === "REJECTED" || data.status === "RESOLVED") {
+      const nextAssetStatus = await statusAfterMaintenance(tx, request.assetId);
+      await setAssetStatus(
+        tx,
+        request.assetId,
+        nextAssetStatus,
+        actorId,
+        maintenanceActionFor(data.status),
+        data.notes || request.title
+      );
+    } else {
+      await tx.assetHistory.create({
+        data: {
+          assetId: request.assetId,
+          actorId,
+          action: maintenanceActionFor(data.status),
+          fromStatus: request.asset.status,
+          toStatus: request.asset.status,
+          notes: data.notes || request.title,
+          changes: {
+            maintenanceStatus: { from: request.status, to: data.status },
+            technicianId: { from: request.technicianId, to: updated.technicianId }
+          }
+        }
+      });
     }
+
     if (data.status === "APPROVED") {
       await tx.notification.create({
         data: {
           userId: request.requesterId,
           type: "MAINTENANCE_APPROVED",
           title: "Maintenance approved",
-          message: request.title
+          message: `${request.asset.assetTag}: ${request.title}`
         }
       });
     }
+    if (data.status === "REJECTED") {
+      await tx.notification.create({
+        data: {
+          userId: request.requesterId,
+          type: "MAINTENANCE_APPROVED",
+          title: "Maintenance rejected",
+          message: `${request.asset.assetTag}: ${data.notes || request.title}`
+        }
+      });
+    }
+    if (updated.technicianId) {
+      await tx.notification.create({
+        data: {
+          userId: updated.technicianId,
+          type: "MAINTENANCE_APPROVED",
+          title: "Maintenance assigned",
+          message: `${request.asset.assetTag}: ${request.title}`
+        }
+      });
+    }
+    return tx.maintenanceRequest.findUnique({ where: { id }, include: maintenanceInclude });
+  });
+};
+
+export const assignMaintenanceTechnician = (id, { technicianId, scheduledAt, notes }, actorId) =>
+  updateMaintenanceStatus(id, { status: "TECHNICIAN_ASSIGNED", technicianId, scheduledAt, notes }, actorId);
+
+export const uploadMaintenanceAttachment = async (id, { fileName, attachmentData }, actorId) => {
+  const request = await prisma.maintenanceRequest.findUnique({ where: { id }, include: maintenanceInclude });
+  if (!request || request.deletedAt) throw notFound("Maintenance request");
+
+  const match = attachmentData.match(/^data:([\w/+.-]+\/[\w.+-]+);base64,(.+)$/i);
+  if (!match) throw new HttpError(400, "Attachment must be a data URL");
+  const buffer = Buffer.from(match[2], "base64");
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024) throw new HttpError(400, "Attachment must be smaller than 5MB");
+
+  const ext = path.extname(fileName).replace(".", "").toLowerCase() || "bin";
+  const safeName = `${request.asset.assetTag}-${randomUUID()}.${ext}`;
+  await mkdir(maintenanceUploadDir, { recursive: true });
+  await writeFile(path.join(maintenanceUploadDir, safeName), buffer);
+
+  const attachment = {
+    id: randomUUID(),
+    name: fileName,
+    mimeType: match[1],
+    size: buffer.length,
+    url: `${publicMaintenanceUploadPath}/${safeName}`,
+    uploadedAt: new Date().toISOString()
+  };
+  const attachments = Array.isArray(request.attachments) ? [...request.attachments, attachment] : [attachment];
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.maintenanceRequest.update({ where: { id }, data: { attachments } });
+    await tx.assetHistory.create({
+      data: {
+        assetId: request.assetId,
+        actorId,
+        action: "MAINTENANCE_ATTACHMENT_UPLOADED",
+        fromStatus: request.asset.status,
+        toStatus: request.asset.status,
+        notes: fileName
+      }
+    });
     return updated;
   });
 };

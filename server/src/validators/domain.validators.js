@@ -81,9 +81,30 @@ export const bookingQuery = z.object({
 
 export const maintenanceBody = z.object({
   assetId: z.string().uuid(),
-  title: z.string().min(3),
-  description: z.string().min(5),
+  title: z.string().trim().min(3).max(160),
+  description: z.string().trim().min(5).max(2000),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
   scheduledAt: z.coerce.date().optional()
+});
+
+export const maintenanceStatusBody = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED", "TECHNICIAN_ASSIGNED", "IN_PROGRESS", "RESOLVED"]),
+  notes: z.string().trim().max(500).optional(),
+  scheduledAt: z.coerce.date().optional(),
+  technicianId: z.string().uuid().optional().nullable()
+});
+
+export const maintenanceAssignBody = z.object({
+  technicianId: z.string().uuid("Technician is required"),
+  scheduledAt: z.coerce.date().optional(),
+  notes: z.string().trim().max(500).optional()
+});
+
+export const maintenanceAttachmentBody = z.object({
+  fileName: z.string().trim().min(1).max(180),
+  attachmentData: z
+    .string()
+    .regex(/^data:[\w/+.-]+\/[\w.+-]+;base64,/i, "Attachment must be a data URL")
 });
 
 export const auditBody = z.object({
