@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ const schema = z.object({
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState("");
   const {
     register,
@@ -30,7 +31,7 @@ export default function Login() {
     try {
       setError("");
       await login(values);
-      navigate("/");
+      navigate(location.state?.from?.pathname || "/");
     } catch (err) {
       setError(err.message);
     }
@@ -51,6 +52,11 @@ export default function Login() {
           <Field label="Password" error={errors.password?.message}>
             <input type="password" className={inputClass} {...register("password")} />
           </Field>
+          <div className="-mt-2 text-right">
+            <Link className="text-sm font-semibold text-primary" to="/forgot-password">
+              Forgot password?
+            </Link>
+          </div>
           {error ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
           <Button disabled={isSubmitting}>
             <FiLogIn /> Login

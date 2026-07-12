@@ -1,38 +1,32 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useAuth } from "../context/AuthContext";
+import { FiMail } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { Field, inputClass } from "../components/Input";
+import { authApi } from "../services/resources";
 
 const schema = z.object({
-  name: z.string().min(2, "Name is required"),
-  email: z.string().email("Invalid email"),
-  password: z
-    .string()
-    .min(8, "Use at least 8 characters")
-    .regex(/[A-Z]/, "Include an uppercase letter")
-    .regex(/[a-z]/, "Include a lowercase letter")
-    .regex(/[0-9]/, "Include a number")
+  email: z.string().email("Invalid email")
 });
 
-export default function Signup() {
-  const { signup } = useAuth();
-  const navigate = useNavigate();
+export default function ForgotPassword() {
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting }
-  } = useForm({ resolver: zodResolver(schema) });
+  } = useForm({ resolver: zodResolver(schema), defaultValues: { email: "" } });
 
   const onSubmit = async (values) => {
     try {
       setError("");
-      await signup(values);
-      navigate("/");
+      setMessage("");
+      const result = await authApi.forgotPassword(values);
+      setMessage(result.message);
     } catch (err) {
       setError(err.message);
     }
@@ -41,23 +35,23 @@ export default function Signup() {
   return (
     <main className="grid min-h-screen place-items-center bg-slate-100 px-4">
       <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
-        <p className="text-sm font-semibold text-primary">AssetFlow ERP</p>
-        <h1 className="mb-6 text-2xl font-bold text-slate-950">Employee Signup</h1>
+        <div className="mb-6">
+          <p className="text-sm font-semibold text-primary">AssetFlow ERP</p>
+          <h1 className="text-2xl font-bold text-slate-950">Forgot Password</h1>
+          <p className="mt-1 text-sm text-slate-500">Enter your account email to request reset instructions.</p>
+        </div>
         <form className="grid gap-4" onSubmit={handleSubmit(onSubmit)}>
-          <Field label="Name" error={errors.name?.message}>
-            <input className={inputClass} {...register("name")} />
-          </Field>
           <Field label="Email" error={errors.email?.message}>
             <input className={inputClass} {...register("email")} />
           </Field>
-          <Field label="Password" error={errors.password?.message}>
-            <input type="password" className={inputClass} {...register("password")} />
-          </Field>
+          {message ? <div className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{message}</div> : null}
           {error ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
-          <Button disabled={isSubmitting}>Create Employee Account</Button>
+          <Button disabled={isSubmitting}>
+            <FiMail /> Send Reset Link
+          </Button>
         </form>
         <p className="mt-4 text-sm text-slate-500">
-          Already registered?{" "}
+          Remembered it?{" "}
           <Link className="font-semibold text-primary" to="/login">
             Login
           </Link>

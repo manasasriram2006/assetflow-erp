@@ -3,7 +3,11 @@ import { api } from "./api";
 export const authApi = {
   login: (payload) => api.post("/auth/login", payload).then((res) => res.data),
   signup: (payload) => api.post("/auth/signup", payload).then((res) => res.data),
-  me: () => api.get("/auth/me").then((res) => res.data)
+  refresh: (refreshToken) => api.post("/auth/refresh", { refreshToken }).then((res) => res.data),
+  forgotPassword: (payload) => api.post("/auth/forgot-password", payload).then((res) => res.data),
+  logout: () => api.post("/auth/logout").then((res) => res.data),
+  me: () => api.get("/auth/me").then((res) => res.data),
+  updateProfile: (payload) => api.patch("/auth/profile", payload).then((res) => res.data)
 };
 
 export const resourceApi = (path) => ({
