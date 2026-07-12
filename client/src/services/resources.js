@@ -44,7 +44,9 @@ export const resourceApi = (path) => ({
 
 export const reportsApi = {
   dashboard: () => api.get("/reports/dashboard").then((res) => res.data),
-  exportAssets: () => api.get("/reports/assets.csv", { responseType: "blob" }).then((res) => res.data)
+  summary: () => api.get("/reports").then((res) => res.data),
+  exportAssets: () => api.get("/reports/assets.csv", { responseType: "blob" }).then((res) => res.data),
+  exportReports: () => api.get("/reports/reports.csv", { responseType: "blob" }).then((res) => res.data)
 };
 
 export const workflowApi = {

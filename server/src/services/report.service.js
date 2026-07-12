@@ -42,6 +42,111 @@ const notificationSummary = (notifications) => {
   return { countsByType, countsByCategory };
 };
 
+const monthKey = (date) => new Date(date).toISOString().slice(0, 7);
+
+const lastMonths = (count = 6) => {
+  const now = new Date();
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (count - index - 1), 1);
+    return {
+      key: date.toISOString().slice(0, 7),
+      label: date.toLocaleString("en-IN", { month: "short", year: "2-digit" }),
+      start: date,
+      end: new Date(date.getFullYear(), date.getMonth() + 1, 1)
+    };
+  });
+};
+
+const buildTrend = (items, months) =>
+  months.map((month) => ({
+    month: month.label,
+    count: items.filter((item) => monthKey(item.createdAt) === month.key).length
+  }));
+
+const csvRows = (rows) =>
+  rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+
+export const reports = async () => {
+  const months = lastMonths(6);
+  const firstTrendDate = months[0].start;
+
+  const [assetsByStatus, categories, departments, maintenance, bookings] = await Promise.all([
+    prisma.asset.groupBy({
+      by: ["status"],
+      where: { deletedAt: null },
+      _count: true
+    }),
+    prisma.category.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        _count: { select: { assets: { where: { deletedAt: null } } } }
+      },
+      orderBy: { name: "asc" }
+    }),
+    prisma.department.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        assets: { where: { deletedAt: null }, select: { status: true } },
+        _count: { select: { users: { where: { deletedAt: null } } } }
+      },
+      orderBy: { name: "asc" }
+    }),
+    prisma.maintenanceRequest.findMany({
+      where: { deletedAt: null, createdAt: { gte: firstTrendDate } },
+      select: { id: true, status: true, createdAt: true }
+    }),
+    prisma.booking.findMany({
+      where: { deletedAt: null, createdAt: { gte: firstTrendDate } },
+      select: { id: true, status: true, createdAt: true }
+    })
+  ]);
+
+  const statusChart = assetsByStatus.map((row) => ({ status: row.status, count: row._count }));
+  const categoryChart = categories.map((category) => ({
+    category: category.name,
+    prefix: category.prefix,
+    count: category._count.assets
+  }));
+  const departmentUtilization = departments.map((department) => {
+    const totalAssets = department.assets.length;
+    const allocatedAssets = department.assets.filter((asset) => asset.status === "ALLOCATED").length;
+    const maintenanceAssets = department.assets.filter((asset) => asset.status === "MAINTENANCE").length;
+    return {
+      department: department.name,
+      code: department.code,
+      assets: totalAssets,
+      allocated: allocatedAssets,
+      maintenance: maintenanceAssets,
+      employees: department._count.users,
+      utilization: totalAssets ? Math.round((allocatedAssets / totalAssets) * 100) : 0
+    };
+  });
+
+  return {
+    charts: {
+      assetsByStatus: statusChart,
+      assetsByCategory: categoryChart,
+      departmentUtilization,
+      maintenanceTrend: buildTrend(maintenance, months),
+      bookingTrend: buildTrend(bookings, months)
+    },
+    summary: {
+      totalAssets: statusChart.reduce((sum, item) => sum + item.count, 0),
+      categories: categoryChart.length,
+      departments: departmentUtilization.length,
+      maintenanceRequests: maintenance.length,
+      bookings: bookings.length
+    },
+    meta: { generatedAt: new Date(), trendMonths: months.length }
+  };
+};
+
 export const dashboard = async (userId) => {
   const todayStart = startOfToday();
   const todayEnd = daysFrom(todayStart, 1);
@@ -278,4 +383,33 @@ export const csv = async () => {
   return [["Asset Tag", "Name", "Status", "Category", "Department", "Location"], ...rows]
     .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
     .join("\n");
+};
+
+export const reportsCsv = async () => {
+  const data = await reports();
+  const sections = [
+    [["Assets by Status"], ["Status", "Count"], ...data.charts.assetsByStatus.map((item) => [item.status, item.count])],
+    [
+      ["Assets by Category"],
+      ["Category", "Prefix", "Count"],
+      ...data.charts.assetsByCategory.map((item) => [item.category, item.prefix, item.count])
+    ],
+    [
+      ["Department Utilization"],
+      ["Department", "Code", "Assets", "Allocated", "Maintenance", "Employees", "Utilization %"],
+      ...data.charts.departmentUtilization.map((item) => [
+        item.department,
+        item.code,
+        item.assets,
+        item.allocated,
+        item.maintenance,
+        item.employees,
+        item.utilization
+      ])
+    ],
+    [["Maintenance Trend"], ["Month", "Requests"], ...data.charts.maintenanceTrend.map((item) => [item.month, item.count])],
+    [["Booking Trend"], ["Month", "Bookings"], ...data.charts.bookingTrend.map((item) => [item.month, item.count])]
+  ];
+
+  return sections.map((section) => csvRows(section)).join("\n\n");
 };
