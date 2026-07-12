@@ -8,6 +8,7 @@ import morgan from "morgan";
 import { env } from "./config/env.js";
 import { sanitize } from "./middleware/sanitize.middleware.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js";
+import { HttpError } from "./utils/httpError.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { assetRoutes, categoryRoutes, departmentRoutes } from "./routes/resource.routes.js";
 import {
@@ -26,8 +27,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const uploadRoot = path.resolve(__dirname, "../uploads");
 
 app.use(helmet());
-app.use(cors({ origin: env.clientOrigin, credentials: true }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300 }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || env.clientOrigins.includes(origin)) return callback(null, true);
+      return callback(new HttpError(403, "Origin is not allowed by CORS"));
+    },
+    credentials: true
+  })
+);
+app.use(rateLimit({ windowMs: env.rateLimitWindowMs, limit: env.rateLimitMax, standardHeaders: true }));
 app.use(express.json({ limit: "8mb" }));
 app.use(sanitize);
 app.use(morgan("dev"));
