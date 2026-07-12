@@ -9,7 +9,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const assetUploadDir = path.resolve(__dirname, "../../uploads/assets");
 const publicAssetUploadPath = "/uploads/assets";
 const searchableFields = ["name", "assetTag", "serialNo", "location"];
-const assetSelectFields = ["name", "serialNo", "status", "value", "purchaseDate", "location", "categoryId", "departmentId"];
+const assetSelectFields = [
+  "name",
+  "serialNo",
+  "status",
+  "value",
+  "purchaseDate",
+  "location",
+  "categoryId",
+  "departmentId"
+];
 
 const cleanAssetData = (data) =>
   Object.fromEntries(
@@ -59,9 +68,7 @@ export const listAssets = async ({ page = 1, limit = 10, search, status, categor
     ...(status ? { status } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(departmentId ? { departmentId } : {}),
-    ...(search
-      ? { OR: searchableFields.map((field) => ({ [field]: { contains: search, mode: "insensitive" } })) }
-      : {})
+    ...(search ? { OR: searchableFields.map((field) => ({ [field]: { contains: search, mode: "insensitive" } })) } : {})
   };
 
   const [items, total] = await Promise.all([
@@ -100,9 +107,27 @@ const generateTag = async (tx, categoryId) => {
   return `${category.prefix}-${String(count + 1).padStart(5, "0")}`;
 };
 
+const validateAssetReferences = async (tx, data) => {
+  if (data.categoryId) {
+    const category = await tx.category.findFirst({
+      where: { id: data.categoryId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!category) throw notFound("Category");
+  }
+  if (data.departmentId) {
+    const department = await tx.department.findFirst({
+      where: { id: data.departmentId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!department) throw notFound("Department");
+  }
+};
+
 export const createAsset = async (data, actorId) =>
   prisma.$transaction(async (tx) => {
     const payload = cleanAssetData(data);
+    await validateAssetReferences(tx, payload);
     const assetTag = await generateTag(tx, payload.categoryId);
     const asset = await tx.asset.create({ data: { ...payload, assetTag } });
     await createHistory(tx, asset.id, actorId, "CREATED", {
@@ -118,7 +143,9 @@ export const updateAsset = async (id, data, actorId) =>
     const before = await tx.asset.findFirst({ where: { id, deletedAt: null } });
     if (!before) throw notFound("Asset");
 
-    const asset = await tx.asset.update({ where: { id }, data: cleanAssetData(data) });
+    const payload = cleanAssetData(data);
+    await validateAssetReferences(tx, payload);
+    const asset = await tx.asset.update({ where: { id }, data: payload });
     await createHistory(tx, asset.id, actorId, before.status !== asset.status ? "STATUS_CHANGED" : "UPDATED", {
       fromStatus: before.status,
       toStatus: asset.status,
@@ -133,6 +160,24 @@ export const deleteAsset = async (id, actorId) =>
   prisma.$transaction(async (tx) => {
     const asset = await tx.asset.findFirst({ where: { id, deletedAt: null } });
     if (!asset) throw notFound("Asset");
+    const [activeAllocation, activeBooking, activeMaintenance] = await Promise.all([
+      tx.allocation.findFirst({ where: { assetId: id, deletedAt: null, status: "ACTIVE" }, select: { id: true } }),
+      tx.booking.findFirst({
+        where: { assetId: id, deletedAt: null, status: { in: ["UPCOMING", "ONGOING"] } },
+        select: { id: true }
+      }),
+      tx.maintenanceRequest.findFirst({
+        where: {
+          assetId: id,
+          deletedAt: null,
+          status: { in: ["PENDING", "APPROVED", "TECHNICIAN_ASSIGNED", "IN_PROGRESS"] }
+        },
+        select: { id: true }
+      })
+    ]);
+    if (activeAllocation || activeBooking || activeMaintenance) {
+      throw new HttpError(409, "Asset has active allocation, booking, or maintenance records");
+    }
     await createHistory(tx, asset.id, actorId, "DELETED", {
       fromStatus: asset.status,
       toStatus: asset.status,
@@ -143,7 +188,7 @@ export const deleteAsset = async (id, actorId) =>
 
 export const uploadAssetPhoto = async (id, { photoData, fileName }, actorId) => {
   const asset = await getAsset(id);
-  const match = photoData.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i);
+  const match = photoData.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})$/i);
   if (!match) throw new HttpError(400, "Photo must be a PNG, JPG, or WEBP image");
 
   const extension = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();

@@ -166,7 +166,9 @@ export const dashboard = async (userId) => {
     recentMaintenance,
     notifications,
     unreadNotifications,
-    notificationCounts
+    notificationCounts,
+    unassignedAssets,
+    bookingsToday
   ] = await Promise.all([
     prisma.asset.groupBy({
       by: ["status"],
@@ -277,12 +279,15 @@ export const dashboard = async (userId) => {
     prisma.notification.findMany({
       where: { userId, deletedAt: null },
       select: { type: true }
+    }),
+    prisma.asset.count({ where: { deletedAt: null, departmentId: null } }),
+    prisma.booking.count({
+      where: { deletedAt: null, startsAt: { gte: todayStart, lt: todayEnd } }
     })
   ]);
 
   const assetsAvailable = assetStatus.find((row) => row.status === "AVAILABLE")?._count || 0;
   const allocated = assetStatus.find((row) => row.status === "ALLOCATED")?._count || 0;
-  const unassignedAssets = await prisma.asset.count({ where: { deletedAt: null, departmentId: null } });
   const departmentSummary = [
     ...departments.map((department) => ({
       id: department.id,
@@ -291,7 +296,9 @@ export const dashboard = async (userId) => {
       assets: department._count.assets,
       employees: department._count.users
     })),
-    ...(unassignedAssets ? [{ id: "unassigned", name: "Unassigned", code: "-", assets: unassignedAssets, employees: 0 }] : [])
+    ...(unassignedAssets
+      ? [{ id: "unassigned", name: "Unassigned", code: "-", assets: unassignedAssets, employees: 0 }]
+      : [])
   ];
 
   const recentActivities = [
@@ -363,15 +370,16 @@ export const dashboard = async (userId) => {
     meta: {
       generatedAt: new Date(),
       upcomingReturnsWindowDays: 7,
-      bookingsToday: await prisma.booking.count({
-        where: { deletedAt: null, startsAt: { gte: todayStart, lt: todayEnd } }
-      })
+      bookingsToday
     }
   };
 };
 
 export const csv = async () => {
-  const assets = await prisma.asset.findMany({ where: { deletedAt: null }, include: { category: true, department: true } });
+  const assets = await prisma.asset.findMany({
+    where: { deletedAt: null },
+    include: { category: true, department: true }
+  });
   const rows = assets.map((asset) => [
     asset.assetTag,
     asset.name,
@@ -407,7 +415,11 @@ export const reportsCsv = async () => {
         item.utilization
       ])
     ],
-    [["Maintenance Trend"], ["Month", "Requests"], ...data.charts.maintenanceTrend.map((item) => [item.month, item.count])],
+    [
+      ["Maintenance Trend"],
+      ["Month", "Requests"],
+      ...data.charts.maintenanceTrend.map((item) => [item.month, item.count])
+    ],
     [["Booking Trend"], ["Month", "Bookings"], ...data.charts.bookingTrend.map((item) => [item.month, item.count])]
   ];
 

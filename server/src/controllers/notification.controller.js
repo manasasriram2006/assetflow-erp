@@ -1,5 +1,5 @@
 import { prisma } from "../config/prisma.js";
-import { HttpError, notFound } from "../utils/httpError.js";
+import { notFound } from "../utils/httpError.js";
 
 const notificationTypes = [
   "ASSET_ASSIGNED",
@@ -45,11 +45,7 @@ const buildNotificationSummary = (notifications) => {
 };
 
 export const listNotifications = async (req, res) => {
-  const { type, category, unread } = req.query;
-  if (type && !notificationTypes.includes(type)) throw new HttpError(400, "Invalid notification type");
-  if (category && !["ALLOCATION", "BOOKING", "MAINTENANCE", "AUDIT", "TRANSFER"].includes(category)) {
-    throw new HttpError(400, "Invalid notification category");
-  }
+  const { type, category, unread } = req.validated?.query || req.query;
 
   const where = {
     userId: req.user.id,
@@ -86,7 +82,12 @@ export const markRead = async (req, res) => {
     where: { id: req.params.id, userId: req.user.id, deletedAt: null }
   });
   if (!notification) throw notFound("Notification");
-  res.json(await prisma.notification.update({ where: { id: req.params.id }, data: { readAt: notification.readAt || new Date() } }));
+  res.json(
+    await prisma.notification.update({
+      where: { id: req.params.id },
+      data: { readAt: notification.readAt || new Date() }
+    })
+  );
 };
 
 export const markAllRead = async (req, res) => {

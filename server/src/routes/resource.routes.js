@@ -3,16 +3,27 @@ import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { authenticate, authorize } from "../middleware/auth.middleware.js";
 import { validate } from "../middleware/validate.middleware.js";
-import { idParam, paginationQuery, withIdAndBody } from "../validators/common.validators.js";
-import { assetBody, assetPhotoBody, categoryBody, departmentBody, assignHeadBody } from "../validators/domain.validators.js";
+import { activeListQuery, assetListQuery, idParam, withIdAndBody } from "../validators/common.validators.js";
+import {
+  assetBody,
+  assetPhotoBody,
+  categoryBody,
+  departmentBody,
+  assignHeadBody
+} from "../validators/domain.validators.js";
 import { assets } from "../controllers/resource.controller.js";
 import { categories, departments } from "../controllers/organization.controller.js";
 
 export const departmentRoutes = Router();
 departmentRoutes.use(authenticate);
-departmentRoutes.get("/", validate(paginationQuery), asyncHandler(departments.list));
+departmentRoutes.get("/", validate(activeListQuery), asyncHandler(departments.list));
 departmentRoutes.get("/:id", validate(idParam), asyncHandler(departments.get));
-departmentRoutes.post("/", authorize("ADMIN"), validate(z.object({ body: departmentBody })), asyncHandler(departments.create));
+departmentRoutes.post(
+  "/",
+  authorize("ADMIN"),
+  validate(z.object({ body: departmentBody })),
+  asyncHandler(departments.create)
+);
 departmentRoutes.put(
   "/:id",
   authorize("ADMIN"),
@@ -30,7 +41,7 @@ departmentRoutes.patch("/:id/deactivate", authorize("ADMIN"), validate(idParam),
 
 export const categoryRoutes = Router();
 categoryRoutes.use(authenticate);
-categoryRoutes.get("/", validate(paginationQuery), asyncHandler(categories.list));
+categoryRoutes.get("/", validate(activeListQuery), asyncHandler(categories.list));
 categoryRoutes.get("/:id", validate(idParam), asyncHandler(categories.get));
 categoryRoutes.post(
   "/",
@@ -58,10 +69,15 @@ categoryRoutes.patch(
 );
 export const assetRoutes = Router();
 assetRoutes.use(authenticate);
-assetRoutes.get("/", validate(paginationQuery), asyncHandler(assets.list));
+assetRoutes.get("/", validate(assetListQuery), asyncHandler(assets.list));
 assetRoutes.get("/:id", validate(idParam), asyncHandler(assets.get));
 assetRoutes.get("/:id/history", validate(idParam), asyncHandler(assets.history));
-assetRoutes.post("/", authorize("ADMIN", "ASSET_MANAGER"), validate(z.object({ body: assetBody })), asyncHandler(assets.create));
+assetRoutes.post(
+  "/",
+  authorize("ADMIN", "ASSET_MANAGER"),
+  validate(z.object({ body: assetBody })),
+  asyncHandler(assets.create)
+);
 assetRoutes.put(
   "/:id",
   authorize("ADMIN", "ASSET_MANAGER"),

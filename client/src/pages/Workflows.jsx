@@ -40,10 +40,7 @@ const titles = {
 
 const assetApi = resourceApi("/assets");
 const userApi = {
-  list: () =>
-    import("../services/api").then(({ api }) =>
-      api.get("/users", { params: { limit: 100, status: "ACTIVE" } }).then((res) => res.data.items || [])
-    )
+  list: () => api.get("/users", { params: { limit: 100, status: "ACTIVE" } }).then((res) => res.data.items || [])
 };
 
 const optionalText = z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().max(500).optional());
@@ -120,13 +117,11 @@ const readFileAsDataUrl = (file) =>
   });
 
 const ErrorList = ({ errors }) =>
-  errors
-    .filter(Boolean)
-    .map((error) => (
-      <Alert key={error} tone="warning">
-        {error}
-      </Alert>
-    ));
+  errors.filter(Boolean).map((error) => (
+    <Alert key={error} tone="warning">
+      {error}
+    </Alert>
+  ));
 
 function AllocationModule({ initialTab = "allocations" }) {
   const { user } = useAuth();
@@ -138,8 +133,14 @@ function AllocationModule({ initialTab = "allocations" }) {
   const transfers = useApiResource(workflowApi.transfers, []);
   const history = useApiResource(workflowApi.allocationHistory, []);
 
-  const allocationForm = useForm({ resolver: zodResolver(allocationSchema), defaultValues: { assetId: "", userId: "", dueAt: "", notes: "" } });
-  const transferForm = useForm({ resolver: zodResolver(transferSchema), defaultValues: { assetId: "", receiverId: "", reason: "" } });
+  const allocationForm = useForm({
+    resolver: zodResolver(allocationSchema),
+    defaultValues: { assetId: "", userId: "", dueAt: "", notes: "" }
+  });
+  const transferForm = useForm({
+    resolver: zodResolver(transferSchema),
+    defaultValues: { assetId: "", receiverId: "", reason: "" }
+  });
 
   const refreshAll = () => {
     assets.refresh();
@@ -184,7 +185,11 @@ function AllocationModule({ initialTab = "allocations" }) {
   const allocatedAssets = assetOptions.filter((asset) => asset.status === "ALLOCATED");
 
   const allocationColumns = [
-    { key: "asset", header: "Asset", render: (row) => `${row.asset?.assetTag || "-"} ${row.asset?.name ? `- ${row.asset.name}` : ""}` },
+    {
+      key: "asset",
+      header: "Asset",
+      render: (row) => `${row.asset?.assetTag || "-"} ${row.asset?.name ? `- ${row.asset.name}` : ""}`
+    },
     { key: "user", header: "Holder", render: (row) => row.user?.name || "-" },
     { key: "issuedAt", header: "Issued", render: (row) => formatDate(row.issuedAt) },
     { key: "dueAt", header: "Due", render: (row) => formatDate(row.dueAt) },
@@ -216,7 +221,12 @@ function AllocationModule({ initialTab = "allocations" }) {
             <Button type="button" className="px-3 py-1.5" onClick={() => decideTransfer(row, "approve")}>
               <FiCheck /> Approve
             </Button>
-            <Button type="button" variant="danger" className="px-3 py-1.5" onClick={() => decideTransfer(row, "reject")}>
+            <Button
+              type="button"
+              variant="danger"
+              className="px-3 py-1.5"
+              onClick={() => decideTransfer(row, "reject")}
+            >
               <FiX /> Reject
             </Button>
           </div>
@@ -266,7 +276,10 @@ function AllocationModule({ initialTab = "allocations" }) {
 
       {tab === "allocations" ? (
         <>
-          <form onSubmit={allocationForm.handleSubmit(onAllocate)} className="mb-6 grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-5">
+          <form
+            onSubmit={allocationForm.handleSubmit(onAllocate)}
+            className="mb-6 grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-5"
+          >
             <Field label="Available Asset" error={allocationForm.formState.errors.assetId?.message}>
               <select className={inputClass} {...allocationForm.register("assetId")}>
                 <option value="">Select asset</option>
@@ -302,7 +315,10 @@ function AllocationModule({ initialTab = "allocations" }) {
       ) : null}
 
       {tab === "transfer" ? (
-        <form onSubmit={transferForm.handleSubmit(onTransfer)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-4">
+        <form
+          onSubmit={transferForm.handleSubmit(onTransfer)}
+          className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-4"
+        >
           <Field label="Allocated Asset" error={transferForm.formState.errors.assetId?.message}>
             <select className={inputClass} {...transferForm.register("assetId")}>
               <option value="">Select asset</option>
@@ -392,9 +408,7 @@ function BookingModule() {
     return date;
   });
   const rows = bookings.data || [];
-  const bookableAssets = (assets.data?.items || []).filter((asset) =>
-    ["AVAILABLE", "RESERVED"].includes(asset.status)
-  );
+  const bookableAssets = (assets.data?.items || []).filter((asset) => ["AVAILABLE", "RESERVED"].includes(asset.status));
   const canSendReminders = canApprove(user?.role);
 
   const historyColumns = [
@@ -438,7 +452,10 @@ function BookingModule() {
       <ErrorList errors={[assets.error, bookings.error]} />
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <form onSubmit={form.handleSubmit(onBook)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+        <form
+          onSubmit={form.handleSubmit(onBook)}
+          className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft"
+        >
           <Field label="Asset" error={form.formState.errors.assetId?.message}>
             <select className={inputClass} {...form.register("assetId")}>
               <option value="">Select asset</option>
@@ -487,7 +504,11 @@ function BookingModule() {
                 <FiChevronRight />
               </button>
             </div>
-            <select className={`${inputClass} md:max-w-48`} value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select
+              className={`${inputClass} md:max-w-48`}
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
               <option value="">All statuses</option>
               {["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"].map((item) => (
                 <option key={item} value={item}>
@@ -507,15 +528,24 @@ function BookingModule() {
               const dayBookings = rows.filter((booking) => sameDay(new Date(booking.startsAt), day));
               const inMonth = day.getMonth() === month.getMonth();
               return (
-                <div key={day.toISOString()} className={`min-h-28 border-b border-r border-slate-100 p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-300"}`}>
+                <div
+                  key={day.toISOString()}
+                  className={`min-h-28 border-b border-r border-slate-100 p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-300"}`}
+                >
                   <div className="mb-2 text-sm font-bold text-slate-700">{day.getDate()}</div>
                   <div className="grid gap-1">
                     {dayBookings.slice(0, 3).map((booking) => (
-                      <div key={booking.id} className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold normal-case text-primary">
-                        {booking.asset?.assetTag} {new Date(booking.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      <div
+                        key={booking.id}
+                        className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold normal-case text-primary"
+                      >
+                        {booking.asset?.assetTag}{" "}
+                        {new Date(booking.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
                     ))}
-                    {dayBookings.length > 3 ? <div className="text-[11px] normal-case text-slate-400">+{dayBookings.length - 3} more</div> : null}
+                    {dayBookings.length > 3 ? (
+                      <div className="text-[11px] normal-case text-slate-400">+{dayBookings.length - 3} more</div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -557,7 +587,9 @@ function MaintenanceModule() {
   const rows = requests.data || [];
   const selected = rows.find((row) => row.id === selectedId) || rows[0];
   const technicians = users.data || [];
-  const maintainableAssets = (assets.data?.items || []).filter((asset) => !["LOST", "RETIRED", "DISPOSED"].includes(asset.status));
+  const maintainableAssets = (assets.data?.items || []).filter(
+    (asset) => !["LOST", "RETIRED", "DISPOSED"].includes(asset.status)
+  );
 
   const onCreate = async (values) => {
     await workflowApi.requestMaintenance({ ...values, scheduledAt: values.scheduledAt || undefined });
@@ -642,7 +674,10 @@ function MaintenanceModule() {
       <ErrorList errors={[assets.error, users.error, requests.error, history.error]} />
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+        <form
+          onSubmit={form.handleSubmit(onCreate)}
+          className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft"
+        >
           <Field label="Asset" error={form.formState.errors.assetId?.message}>
             <select className={inputClass} {...form.register("assetId")}>
               <option value="">Select asset</option>
@@ -683,7 +718,9 @@ function MaintenanceModule() {
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
               <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{selected.asset?.assetTag}</p>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                    {selected.asset?.assetTag}
+                  </p>
                   <h2 className="text-lg font-bold text-slate-950">{selected.title}</h2>
                   <p className="mt-1 text-sm text-slate-500">{selected.description}</p>
                 </div>
@@ -695,7 +732,12 @@ function MaintenanceModule() {
 
               <div className="mb-4 grid gap-3 md:grid-cols-3">
                 <Field label="Technician">
-                  <select className={inputClass} value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} disabled={!canManage}>
+                  <select
+                    className={inputClass}
+                    value={technicianId}
+                    onChange={(event) => setTechnicianId(event.target.value)}
+                    disabled={!canManage}
+                  >
                     <option value="">Select technician</option>
                     {technicians.map((item) => (
                       <option key={item.id} value={item.id}>
@@ -705,10 +747,21 @@ function MaintenanceModule() {
                   </select>
                 </Field>
                 <Field label="Scheduled At">
-                  <input type="datetime-local" className={inputClass} value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} disabled={!canManage} />
+                  <input
+                    type="datetime-local"
+                    className={inputClass}
+                    value={scheduledAt}
+                    onChange={(event) => setScheduledAt(event.target.value)}
+                    disabled={!canManage}
+                  />
                 </Field>
                 <Field label="Notes">
-                  <input className={inputClass} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!canManage} />
+                  <input
+                    className={inputClass}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    disabled={!canManage}
+                  />
                 </Field>
               </div>
 
@@ -892,7 +945,10 @@ function AuditModule() {
       <ErrorList errors={[assets.error, users.error, audits.error, history.error]} />
 
       <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+        <form
+          onSubmit={form.handleSubmit(onCreate)}
+          className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft"
+        >
           <Field label="Audit Cycle" error={form.formState.errors.name?.message}>
             <input className={inputClass} {...form.register("name")} />
           </Field>
@@ -907,7 +963,10 @@ function AuditModule() {
           <Field label="Assets" error={form.formState.errors.assetIds?.message}>
             <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
               {assetRows.map((asset) => (
-                <label key={asset.id} className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm hover:bg-white">
+                <label
+                  key={asset.id}
+                  className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm hover:bg-white"
+                >
                   <input type="checkbox" value={asset.id} className="mt-1" {...form.register("assetIds")} />
                   <span className="min-w-0">
                     <span className="block font-semibold text-slate-800">{asset.assetTag}</span>
@@ -935,7 +994,8 @@ function AuditModule() {
                   </p>
                   <h2 className="text-lg font-bold text-slate-950">{selected.name}</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    {auditItems.length} assets, {uncheckedItems.length} unchecked, {missingItems.length} missing, {damagedItems.length} damaged
+                    {auditItems.length} assets, {uncheckedItems.length} unchecked, {missingItems.length} missing,{" "}
+                    {damagedItems.length} damaged
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -954,7 +1014,9 @@ function AuditModule() {
               <div className="mb-4 grid gap-3 md:grid-cols-3">
                 <div className="rounded-md border border-slate-200 p-3">
                   <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Verified</p>
-                  <p className="text-2xl font-bold text-green-700">{auditItems.filter((item) => item.status === "VERIFIED").length}</p>
+                  <p className="text-2xl font-bold text-green-700">
+                    {auditItems.filter((item) => item.status === "VERIFIED").length}
+                  </p>
                 </div>
                 <div className="rounded-md border border-slate-200 p-3">
                   <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Missing</p>
@@ -985,7 +1047,9 @@ function AuditModule() {
                         <select
                           className={inputClass}
                           value={auditorByItem[item.id] || item.auditorId || ""}
-                          onChange={(event) => setAuditorByItem((current) => ({ ...current, [item.id]: event.target.value }))}
+                          onChange={(event) =>
+                            setAuditorByItem((current) => ({ ...current, [item.id]: event.target.value }))
+                          }
                         >
                           <option value="">Assign auditor</option>
                           {auditors.map((auditor) => (
@@ -998,19 +1062,36 @@ function AuditModule() {
                           className={inputClass}
                           placeholder="Notes"
                           value={notesByItem[item.id] || ""}
-                          onChange={(event) => setNotesByItem((current) => ({ ...current, [item.id]: event.target.value }))}
+                          onChange={(event) =>
+                            setNotesByItem((current) => ({ ...current, [item.id]: event.target.value }))
+                          }
                         />
                         <div className="flex flex-wrap gap-2">
-                          <Button type="button" variant="secondary" className="px-3 py-2" onClick={() => assignAuditor(item)}>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="px-3 py-2"
+                            onClick={() => assignAuditor(item)}
+                          >
                             <FiUserCheck />
                           </Button>
                           <Button type="button" className="px-3 py-2" onClick={() => verifyItem(item, "VERIFIED")}>
                             <FiCheck />
                           </Button>
-                          <Button type="button" variant="danger" className="px-3 py-2" onClick={() => verifyItem(item, "MISSING")}>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            className="px-3 py-2"
+                            onClick={() => verifyItem(item, "MISSING")}
+                          >
                             Missing
                           </Button>
-                          <Button type="button" variant="secondary" className="px-3 py-2" onClick={() => verifyItem(item, "DAMAGED")}>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="px-3 py-2"
+                            onClick={() => verifyItem(item, "DAMAGED")}
+                          >
                             Damaged
                           </Button>
                         </div>
@@ -1121,7 +1202,10 @@ function GenericWorkflow({ type }) {
   return (
     <div>
       <PageHeader title={title} description={description} />
-      <form onSubmit={form.handleSubmit(submit)} className="mb-6 grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-4">
+      <form
+        onSubmit={form.handleSubmit(submit)}
+        className="mb-6 grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-4"
+      >
         {type !== "audits" ? (
           <Field label="Asset">{assetSelect}</Field>
         ) : (

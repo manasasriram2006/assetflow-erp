@@ -1,12 +1,14 @@
 import { prisma } from "../config/prisma.js";
 import * as workflow from "../services/workflow.service.js";
 
+const publicUserSelect = { id: true, name: true, email: true, role: true, departmentId: true };
+
 export const allocations = {
   list: async (req, res) =>
     res.json(
       await prisma.allocation.findMany({
         where: { deletedAt: null },
-        include: { asset: true, user: true },
+        include: { asset: true, user: { select: publicUserSelect } },
         orderBy: { issuedAt: "desc" }
       })
     ),
@@ -20,7 +22,11 @@ export const transfers = {
     res.json(
       await prisma.transfer.findMany({
         where: { deletedAt: null },
-        include: { asset: true, requester: true, receiver: true },
+        include: {
+          asset: true,
+          requester: { select: publicUserSelect },
+          receiver: { select: publicUserSelect }
+        },
         orderBy: { createdAt: "desc" }
       })
     ),
@@ -43,9 +49,9 @@ export const maintenance = {
   list: async (req, res) => res.json(await workflow.listMaintenanceRequests()),
   history: async (req, res) => res.json(await workflow.maintenanceHistory()),
   create: async (req, res) =>
-    res.status(201).json(
-      await workflow.createMaintenance({ ...req.validated.body, requesterId: req.user.id }, req.user.id)
-    ),
+    res
+      .status(201)
+      .json(await workflow.createMaintenance({ ...req.validated.body, requesterId: req.user.id }, req.user.id)),
   updateStatus: async (req, res) =>
     res.json(await workflow.updateMaintenanceStatus(req.params.id, req.validated.body, req.user.id)),
   assignTechnician: async (req, res) =>
@@ -61,6 +67,7 @@ export const audits = {
   discrepancyReport: async (req, res) => res.json(await workflow.getAuditDiscrepancyReport(req.params.id)),
   assignAuditor: async (req, res) =>
     res.json(await workflow.assignAuditItemAuditor(req.params.id, req.validated.body, req.user.id)),
-  verifyItem: async (req, res) => res.json(await workflow.verifyAuditItem(req.params.id, req.validated.body, req.user.id)),
+  verifyItem: async (req, res) =>
+    res.json(await workflow.verifyAuditItem(req.params.id, req.validated.body, req.user.id)),
   close: async (req, res) => res.json(await workflow.closeAudit(req.params.id, req.user.id))
 };

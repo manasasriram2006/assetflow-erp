@@ -10,9 +10,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const maintenanceUploadDir = path.resolve(__dirname, "../../uploads/maintenance");
 const publicMaintenanceUploadPath = "/uploads/maintenance";
 
+const publicUserSelect = { id: true, name: true, email: true, role: true, departmentId: true };
+
 const activeAllocationInclude = {
   asset: { select: { id: true, assetTag: true, name: true, status: true } },
-  user: { select: { id: true, name: true, email: true } }
+  user: { select: publicUserSelect }
+};
+
+const transferInclude = {
+  asset: true,
+  requester: { select: publicUserSelect },
+  receiver: { select: publicUserSelect }
+};
+
+const ensureActiveUser = async (id, label = "user") => {
+  const user = await prisma.user.findFirst({ where: { id, deletedAt: null }, select: publicUserSelect });
+  if (!user) throw notFound(label);
+  return user;
 };
 
 const ensureActiveAllocation = async (assetId) => {
@@ -26,6 +40,7 @@ const ensureActiveAllocation = async (assetId) => {
 
 export const allocateAsset = async ({ assetId, userId, dueAt, notes }, actorId) => {
   const asset = await assertAssetAvailable(assetId);
+  await ensureActiveUser(userId);
   const activeAllocation = await prisma.allocation.findFirst({ where: { assetId, status: "ACTIVE", deletedAt: null } });
   if (activeAllocation) throw new HttpError(409, "Asset already has an active allocation");
 
@@ -45,7 +60,10 @@ export const allocateAsset = async ({ assetId, userId, dueAt, notes }, actorId) 
 };
 
 export const returnAsset = async (allocationId, actorId) => {
-  const allocation = await prisma.allocation.findUnique({ where: { id: allocationId }, include: activeAllocationInclude });
+  const allocation = await prisma.allocation.findUnique({
+    where: { id: allocationId },
+    include: activeAllocationInclude
+  });
   if (!allocation) throw notFound("Allocation");
   if (allocation.status === "RETURNED") throw new HttpError(409, "Allocation is already returned");
   if (allocation.status !== "ACTIVE") throw new HttpError(409, "Only active allocations can be returned");
@@ -69,6 +87,7 @@ export const returnAsset = async (allocationId, actorId) => {
 
 export const requestTransfer = async ({ assetId, receiverId, reason }, requester) => {
   const allocation = await ensureActiveAllocation(assetId);
+  await ensureActiveUser(receiverId, "Receiver");
   if (allocation.asset.status === "MAINTENANCE") throw new HttpError(409, "Asset is currently under maintenance");
   if (allocation.userId === receiverId) throw new HttpError(409, "Receiver already holds this asset");
   if (requester.role === "EMPLOYEE" && allocation.userId !== requester.id) {
@@ -90,7 +109,7 @@ export const requestTransfer = async ({ assetId, receiverId, reason }, requester
     });
     return tx.transfer.findUnique({
       where: { id: transfer.id },
-      include: { asset: true, requester: true, receiver: true }
+      include: transferInclude
     });
   });
 };
@@ -98,7 +117,7 @@ export const requestTransfer = async ({ assetId, receiverId, reason }, requester
 export const decideTransfer = async (id, status, actorId, notes) => {
   const transfer = await prisma.transfer.findUnique({
     where: { id },
-    include: { asset: true, requester: true, receiver: true }
+    include: transferInclude
   });
   if (!transfer) throw notFound("Transfer");
   if (transfer.status !== "PENDING") throw new HttpError(409, "Only pending transfers can be decided");
@@ -130,7 +149,11 @@ export const decideTransfer = async (id, status, actorId, notes) => {
   return prisma.$transaction(async (tx) => {
     await tx.allocation.update({
       where: { id: activeAllocation.id },
-      data: { status: "RETURNED", returnedAt: new Date(), notes: activeAllocation.notes || "Closed by transfer approval" }
+      data: {
+        status: "RETURNED",
+        returnedAt: new Date(),
+        notes: activeAllocation.notes || "Closed by transfer approval"
+      }
     });
     const nextAllocation = await tx.allocation.create({
       data: {
@@ -240,7 +263,8 @@ export const listBookings = async ({ status, from, to } = {}) => {
       select: { assetId: true },
       distinct: ["assetId"]
     });
-    for (const item of completed) await releaseAssetIfNoActiveBookings(tx, item.assetId, null, "Completed booking released");
+    for (const item of completed)
+      await releaseAssetIfNoActiveBookings(tx, item.assetId, null, "Completed booking released");
   });
 
   const where = {
@@ -292,7 +316,8 @@ export const createBooking = async ({ assetId, userId, startsAt, endsAt, purpose
 export const cancelBooking = async (id, actorId) => {
   const booking = await prisma.booking.findUnique({ where: { id }, include: bookingInclude });
   if (!booking || booking.deletedAt) throw notFound("Booking");
-  if (["COMPLETED", "CANCELLED"].includes(booking.status)) throw new HttpError(409, `Booking is already ${booking.status}`);
+  if (["COMPLETED", "CANCELLED"].includes(booking.status))
+    throw new HttpError(409, `Booking is already ${booking.status}`);
 
   return prisma.$transaction(async (tx) => {
     const cancelled = await tx.booking.update({ where: { id }, data: { status: "CANCELLED" } });
@@ -416,7 +441,10 @@ export const maintenanceHistory = () =>
     take: 100
   });
 
-export const createMaintenance = async ({ assetId, requesterId, title, description, priority, scheduledAt }, actorId) => {
+export const createMaintenance = async (
+  { assetId, requesterId, title, description, priority, scheduledAt },
+  actorId
+) => {
   const asset = await prisma.asset.findFirst({ where: { id: assetId, deletedAt: null } });
   if (!asset) throw notFound("Asset");
   if (["LOST", "RETIRED", "DISPOSED"].includes(asset.status)) {
@@ -444,6 +472,7 @@ export const updateMaintenanceStatus = async (id, data, actorId) => {
   const request = await prisma.maintenanceRequest.findUnique({ where: { id }, include: maintenanceInclude });
   if (!request || request.deletedAt) throw notFound("Maintenance request");
   assertMaintenanceTransition(request.status, data.status);
+  if (data.technicianId) await ensureActiveUser(data.technicianId, "Technician");
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.maintenanceRequest.update({
@@ -524,12 +553,32 @@ export const uploadMaintenanceAttachment = async (id, { fileName, attachmentData
   const request = await prisma.maintenanceRequest.findUnique({ where: { id }, include: maintenanceInclude });
   if (!request || request.deletedAt) throw notFound("Maintenance request");
 
-  const match = attachmentData.match(/^data:([\w/+.-]+\/[\w.+-]+);base64,(.+)$/i);
+  const match = attachmentData.match(/^data:([\w/+.-]+\/[\w.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/i);
   if (!match) throw new HttpError(400, "Attachment must be a data URL");
+  const allowedMimeTypes = new Set([
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "application/pdf",
+    "text/plain"
+  ]);
+  if (!allowedMimeTypes.has(match[1].toLowerCase())) {
+    throw new HttpError(400, "Attachment must be a PNG, JPG, WEBP, PDF, or plain text file");
+  }
   const buffer = Buffer.from(match[2], "base64");
-  if (!buffer.length || buffer.length > 5 * 1024 * 1024) throw new HttpError(400, "Attachment must be smaller than 5MB");
+  if (!buffer.length || buffer.length > 5 * 1024 * 1024)
+    throw new HttpError(400, "Attachment must be smaller than 5MB");
 
-  const ext = path.extname(fileName).replace(".", "").toLowerCase() || "bin";
+  const extensionByMimeType = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+    "application/pdf": "pdf",
+    "text/plain": "txt"
+  };
+  const ext = extensionByMimeType[match[1].toLowerCase()];
   const safeName = `${request.asset.assetTag}-${randomUUID()}.${ext}`;
   await mkdir(maintenanceUploadDir, { recursive: true });
   await writeFile(path.join(maintenanceUploadDir, safeName), buffer);
@@ -753,7 +802,10 @@ export const closeAudit = async (auditId, actorId) => {
   if (unchecked.length) throw new HttpError(409, "All audit assets must be verified before closing");
 
   return prisma.$transaction(async (tx) => {
-    const closed = await tx.auditCycle.update({ where: { id: auditId }, data: { status: "CLOSED", endsAt: audit.endsAt || new Date() } });
+    const closed = await tx.auditCycle.update({
+      where: { id: auditId },
+      data: { status: "CLOSED", endsAt: audit.endsAt || new Date() }
+    });
     await tx.assetHistory.createMany({
       data: audit.items.map((item) => ({
         assetId: item.assetId,

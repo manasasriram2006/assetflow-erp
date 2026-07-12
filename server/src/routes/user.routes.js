@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../middleware/auth.middleware.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { validate } from "../middleware/validate.middleware.js";
-import { idParam, paginationQuery, withIdAndBody } from "../validators/common.validators.js";
+import { idParam, userListQuery, withIdAndBody } from "../validators/common.validators.js";
 import { employeeCreateBody, employeeUpdateBody, promoteBody } from "../validators/domain.validators.js";
 import {
   activateUser,
@@ -21,17 +21,17 @@ userRoutes.use(authenticate);
 userRoutes.get(
   "/",
   authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
-  validate(paginationQuery),
+  validate(userListQuery),
   asyncHandler(listUsers)
 );
-userRoutes.get("/:id", authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"), validate(idParam), asyncHandler(getUser));
-userRoutes.post("/", authorize("ADMIN"), validate(z.object({ body: employeeCreateBody })), asyncHandler(createUser));
-userRoutes.put(
+userRoutes.get(
   "/:id",
-  authorize("ADMIN"),
-  validate(withIdAndBody(employeeUpdateBody)),
-  asyncHandler(updateUser)
+  authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
+  validate(idParam),
+  asyncHandler(getUser)
 );
+userRoutes.post("/", authorize("ADMIN"), validate(z.object({ body: employeeCreateBody })), asyncHandler(createUser));
+userRoutes.put("/:id", authorize("ADMIN"), validate(withIdAndBody(employeeUpdateBody)), asyncHandler(updateUser));
 userRoutes.patch(
   "/:id/role",
   authorize("ADMIN"),

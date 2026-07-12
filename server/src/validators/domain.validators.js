@@ -27,10 +27,19 @@ export const assetBody = z.object({
 });
 
 export const assetPhotoBody = z.object({
-  fileName: z.string().trim().min(1).max(180),
+  fileName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(180)
+    .regex(/^[\w .-]+$/, "File name contains unsupported characters"),
   photoData: z
     .string()
-    .regex(/^data:image\/(png|jpeg|jpg|webp);base64,/i, "Photo must be a PNG, JPG, or WEBP data URL")
+    .max(7_000_000, "Photo must be smaller than 5MB")
+    .regex(
+      /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i,
+      "Photo must be a PNG, JPG, or WEBP data URL"
+    )
 });
 
 export const allocationBody = z
@@ -72,10 +81,32 @@ export const bookingBody = z
   });
 
 export const bookingQuery = z.object({
+  query: z
+    .object({
+      status: z.enum(["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"]).optional(),
+      from: z.coerce.date().optional(),
+      to: z.coerce.date().optional()
+    })
+    .refine((query) => !query.from || !query.to || query.to >= query.from, {
+      message: "End date must be after start date",
+      path: ["to"]
+    })
+});
+
+export const notificationQuery = z.object({
   query: z.object({
-    status: z.enum(["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"]).optional(),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional()
+    type: z
+      .enum([
+        "ASSET_ASSIGNED",
+        "TRANSFER_APPROVED",
+        "MAINTENANCE_APPROVED",
+        "BOOKING_REMINDER",
+        "OVERDUE_RETURN",
+        "AUDIT_DISCREPANCY"
+      ])
+      .optional(),
+    category: z.enum(["ALLOCATION", "BOOKING", "MAINTENANCE", "AUDIT", "TRANSFER"]).optional(),
+    unread: z.enum(["true", "false"]).optional()
   })
 });
 
@@ -101,10 +132,19 @@ export const maintenanceAssignBody = z.object({
 });
 
 export const maintenanceAttachmentBody = z.object({
-  fileName: z.string().trim().min(1).max(180),
+  fileName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(180)
+    .regex(/^[\w .-]+$/, "File name contains unsupported characters"),
   attachmentData: z
     .string()
-    .regex(/^data:[\w/+.-]+\/[\w.+-]+;base64,/i, "Attachment must be a data URL")
+    .max(7_000_000, "Attachment must be smaller than 5MB")
+    .regex(
+      /^data:(image\/(png|jpeg|jpg|webp)|application\/pdf|text\/plain);base64,[A-Za-z0-9+/]+={0,2}$/i,
+      "Attachment must be a PNG, JPG, WEBP, PDF, or plain text data URL"
+    )
 });
 
 export const auditBody = z
