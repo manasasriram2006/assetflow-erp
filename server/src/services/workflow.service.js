@@ -176,11 +176,77 @@ export const allocationHistory = () =>
     take: 100
   });
 
+const activeBookingStatuses = ["UPCOMING", "ONGOING"];
+
+const bookingInclude = {
+  asset: { select: { id: true, assetTag: true, name: true, status: true, location: true } },
+  user: { select: { id: true, name: true, email: true } }
+};
+
+const updateBookingStatuses = async (tx = prisma) => {
+  const now = new Date();
+  await tx.booking.updateMany({
+    where: { deletedAt: null, status: "UPCOMING", startsAt: { lte: now }, endsAt: { gt: now } },
+    data: { status: "ONGOING" }
+  });
+  await tx.booking.updateMany({
+    where: { deletedAt: null, status: { in: ["UPCOMING", "ONGOING"] }, endsAt: { lte: now } },
+    data: { status: "COMPLETED" }
+  });
+};
+
+const releaseAssetIfNoActiveBookings = async (tx, assetId, actorId, notes = "Booking window closed") => {
+  const activeBooking = await tx.booking.findFirst({
+    where: { assetId, deletedAt: null, status: { in: activeBookingStatuses } }
+  });
+  const activeAllocation = await tx.allocation.findFirst({
+    where: { assetId, deletedAt: null, status: "ACTIVE" }
+  });
+  if (!activeBooking && !activeAllocation) {
+    const asset = await tx.asset.findFirst({ where: { id: assetId, deletedAt: null } });
+    if (asset && asset.status === "RESERVED") {
+      await setAssetStatus(tx, assetId, "AVAILABLE", actorId, "BOOKING_RELEASED", notes);
+    }
+  }
+};
+
+export const listBookings = async ({ status, from, to } = {}) => {
+  await prisma.$transaction(async (tx) => {
+    await updateBookingStatuses(tx);
+    const completed = await tx.booking.findMany({
+      where: { deletedAt: null, status: "COMPLETED" },
+      select: { assetId: true },
+      distinct: ["assetId"]
+    });
+    for (const item of completed) await releaseAssetIfNoActiveBookings(tx, item.assetId, null, "Completed booking released");
+  });
+
+  const where = {
+    deletedAt: null,
+    ...(status ? { status } : {}),
+    ...(from || to
+      ? {
+          startsAt: {
+            ...(from ? { gte: from } : {}),
+            ...(to ? { lte: to } : {})
+          }
+        }
+      : {})
+  };
+  return prisma.booking.findMany({ where, include: bookingInclude, orderBy: { startsAt: "asc" } });
+};
+
 export const createBooking = async ({ assetId, userId, startsAt, endsAt, purpose }, actorId) => {
+  const asset = await prisma.asset.findFirst({ where: { id: assetId, deletedAt: null } });
+  if (!asset) throw notFound("Asset");
+  if (!["AVAILABLE", "RESERVED"].includes(asset.status)) {
+    throw new HttpError(409, `Asset cannot be booked while ${asset.status}`);
+  }
   const overlap = await prisma.booking.findFirst({
     where: {
       assetId,
-      status: { in: ["UPCOMING", "ONGOING"] },
+      deletedAt: null,
+      status: { in: activeBookingStatuses },
       startsAt: { lt: endsAt },
       endsAt: { gt: startsAt }
     }
@@ -188,9 +254,88 @@ export const createBooking = async ({ assetId, userId, startsAt, endsAt, purpose
   if (overlap) throw new HttpError(409, "Booking overlaps an existing booking");
   return prisma.$transaction(async (tx) => {
     const booking = await tx.booking.create({ data: { assetId, userId, startsAt, endsAt, purpose } });
-    await setAssetStatus(tx, assetId, "RESERVED", actorId, "RESERVED", "Asset reserved through booking");
-    return booking;
+    await setAssetStatus(tx, assetId, "RESERVED", actorId, "RESERVED", `Booked for ${purpose}`);
+    await tx.notification.create({
+      data: {
+        userId,
+        type: "BOOKING_REMINDER",
+        title: "Booking confirmed",
+        message: `${asset.assetTag} is booked for ${startsAt.toLocaleString()}.`
+      }
+    });
+    return tx.booking.findUnique({ where: { id: booking.id }, include: bookingInclude });
   });
+};
+
+export const cancelBooking = async (id, actorId) => {
+  const booking = await prisma.booking.findUnique({ where: { id }, include: bookingInclude });
+  if (!booking || booking.deletedAt) throw notFound("Booking");
+  if (["COMPLETED", "CANCELLED"].includes(booking.status)) throw new HttpError(409, `Booking is already ${booking.status}`);
+
+  return prisma.$transaction(async (tx) => {
+    const cancelled = await tx.booking.update({ where: { id }, data: { status: "CANCELLED" } });
+    await tx.assetHistory.create({
+      data: {
+        assetId: booking.assetId,
+        actorId,
+        action: "BOOKING_CANCELLED",
+        fromStatus: booking.asset.status,
+        toStatus: booking.asset.status,
+        notes: booking.purpose
+      }
+    });
+    await releaseAssetIfNoActiveBookings(tx, booking.assetId, actorId, "Booking cancelled");
+    await tx.notification.create({
+      data: {
+        userId: booking.userId,
+        type: "BOOKING_REMINDER",
+        title: "Booking cancelled",
+        message: `${booking.asset.assetTag} booking has been cancelled.`
+      }
+    });
+    return cancelled;
+  });
+};
+
+export const sendBookingReminders = async (actorId) => {
+  const now = new Date();
+  const soon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  await updateBookingStatuses();
+  const bookings = await prisma.booking.findMany({
+    where: { deletedAt: null, status: "UPCOMING", startsAt: { gte: now, lte: soon } },
+    include: bookingInclude,
+    orderBy: { startsAt: "asc" }
+  });
+
+  if (bookings.length) {
+    await prisma.$transaction(
+      bookings.map((booking) =>
+        prisma.notification.create({
+          data: {
+            userId: booking.userId,
+            type: "BOOKING_REMINDER",
+            title: "Upcoming booking reminder",
+            message: `${booking.asset.assetTag} is booked for ${booking.startsAt.toLocaleString()}.`
+          }
+        })
+      )
+    );
+  }
+
+  if (actorId && bookings.length) {
+    await prisma.assetHistory.createMany({
+      data: bookings.map((booking) => ({
+        assetId: booking.assetId,
+        actorId,
+        action: "BOOKING_REMINDER_SENT",
+        fromStatus: booking.asset.status,
+        toStatus: booking.asset.status,
+        notes: `Reminder sent for booking ${booking.id}`
+      }))
+    });
+  }
+
+  return { sent: bookings.length, bookings };
 };
 
 export const createMaintenance = async ({ assetId, requesterId, title, description, scheduledAt }, actorId) => {

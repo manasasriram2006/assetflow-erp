@@ -60,12 +60,24 @@ export const bookingBody = z
     assetId: z.string().uuid(),
     startsAt: z.coerce.date(),
     endsAt: z.coerce.date(),
-    purpose: z.string().min(3)
+    purpose: z.string().trim().min(3).max(500)
+  })
+  .refine((data) => data.startsAt > new Date(), {
+    message: "Booking start must be in the future",
+    path: ["startsAt"]
   })
   .refine((data) => data.endsAt > data.startsAt, {
     message: "Booking end must be after start",
     path: ["endsAt"]
   });
+
+export const bookingQuery = z.object({
+  query: z.object({
+    status: z.enum(["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"]).optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional()
+  })
+});
 
 export const maintenanceBody = z.object({
   assetId: z.string().uuid(),

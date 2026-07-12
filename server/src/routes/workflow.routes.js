@@ -8,6 +8,7 @@ import {
   allocationBody,
   auditBody,
   bookingBody,
+  bookingQuery,
   maintenanceBody,
   transferBody,
   transferDecisionBody
@@ -54,8 +55,14 @@ transferRoutes.post(
 
 export const bookingRoutes = Router();
 bookingRoutes.use(authenticate);
-bookingRoutes.get("/", asyncHandler(bookings.list));
+bookingRoutes.get("/", validate(bookingQuery), asyncHandler(bookings.list));
 bookingRoutes.post("/", validate(z.object({ body: bookingBody })), asyncHandler(bookings.create));
+bookingRoutes.post("/:id/cancel", validate(idParam), asyncHandler(bookings.cancel));
+bookingRoutes.post(
+  "/reminders",
+  authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
+  asyncHandler(bookings.reminders)
+);
 
 export const maintenanceRoutes = Router();
 maintenanceRoutes.use(authenticate);

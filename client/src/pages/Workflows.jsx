@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FiCheck, FiRefreshCw, FiRotateCcw, FiSend, FiX } from "react-icons/fi";
+import { FiBell, FiCheck, FiChevronLeft, FiChevronRight, FiRefreshCw, FiRotateCcw, FiSend, FiX } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { DataTable, Status } from "../components/DataTable";
 import { Field, inputClass } from "../components/Input";
@@ -43,7 +43,31 @@ const transferSchema = z.object({
   reason: z.string().trim().min(5, "Reason is required").max(500)
 });
 
+const bookingSchema = z
+  .object({
+    assetId: z.string().min(1, "Asset is required"),
+    startsAt: z.string().min(1, "Start time is required"),
+    endsAt: z.string().min(1, "End time is required"),
+    purpose: z.string().trim().min(3, "Purpose is required").max(500)
+  })
+  .refine((data) => new Date(data.startsAt) > new Date(), {
+    message: "Start must be in the future",
+    path: ["startsAt"]
+  })
+  .refine((data) => new Date(data.endsAt) > new Date(data.startsAt), {
+    message: "End must be after start",
+    path: ["endsAt"]
+  });
+
 const canApprove = (role) => ["ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"].includes(role);
+
+const toMonthInput = (date) => date.toISOString().slice(0, 7);
+const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
+const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
+const addMonths = (date, amount) => new Date(date.getFullYear(), date.getMonth() + amount, 1);
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+const formatDateTime = (value) =>
+  value ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 
 function AllocationModule({ initialTab = "allocations" }) {
   const { user } = useAuth();
@@ -261,6 +285,201 @@ function AllocationModule({ initialTab = "allocations" }) {
   );
 }
 
+function BookingModule() {
+  const { user } = useAuth();
+  const [month, setMonth] = useState(startOfMonth(new Date()));
+  const [status, setStatus] = useState("");
+  const [message, setMessage] = useState("");
+  const monthStart = startOfMonth(month);
+  const monthEnd = endOfMonth(month);
+  const query = {
+    from: monthStart.toISOString(),
+    to: new Date(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate(), 23, 59, 59).toISOString(),
+    status: status || undefined
+  };
+
+  const assets = useApiResource(() => assetApi.list({ limit: 100 }), []);
+  const bookings = useApiResource(() => workflowApi.bookings(query), [month, status]);
+  const form = useForm({
+    resolver: zodResolver(bookingSchema),
+    defaultValues: { assetId: "", startsAt: "", endsAt: "", purpose: "" }
+  });
+
+  const refreshAll = () => {
+    assets.refresh();
+    bookings.refresh();
+  };
+
+  const onBook = async (values) => {
+    await workflowApi.book(values);
+    form.reset();
+    setMessage("Booking created");
+    refreshAll();
+  };
+
+  const onCancel = async (booking) => {
+    if (!window.confirm(`Cancel booking for ${booking.asset?.assetTag}?`)) return;
+    await workflowApi.cancelBooking(booking.id);
+    setMessage("Booking cancelled");
+    refreshAll();
+  };
+
+  const sendReminders = async () => {
+    const result = await workflowApi.sendBookingReminders();
+    setMessage(`${result.sent} reminder${result.sent === 1 ? "" : "s"} sent`);
+  };
+
+  const calendarStart = new Date(monthStart);
+  calendarStart.setDate(monthStart.getDate() - monthStart.getDay());
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(calendarStart);
+    date.setDate(calendarStart.getDate() + index);
+    return date;
+  });
+  const rows = bookings.data || [];
+  const bookableAssets = (assets.data?.items || []).filter((asset) =>
+    ["AVAILABLE", "RESERVED"].includes(asset.status)
+  );
+  const canSendReminders = canApprove(user?.role);
+
+  const historyColumns = [
+    { key: "asset", header: "Asset", render: (row) => row.asset?.assetTag || "-" },
+    { key: "user", header: "Booked By", render: (row) => row.user?.name || "-" },
+    { key: "purpose", header: "Purpose" },
+    { key: "startsAt", header: "Starts", render: (row) => formatDateTime(row.startsAt) },
+    { key: "endsAt", header: "Ends", render: (row) => formatDateTime(row.endsAt) },
+    { key: "status", header: "Status", render: (row) => <Status value={row.status} /> },
+    {
+      key: "actions",
+      header: "",
+      render: (row) =>
+        ["UPCOMING", "ONGOING"].includes(row.status) ? (
+          <Button type="button" variant="danger" className="px-3 py-1.5" onClick={() => onCancel(row)}>
+            <FiX /> Cancel
+          </Button>
+        ) : null
+    }
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Booking"
+        description="Book shared resources, validate overlapping windows, and track upcoming, ongoing, completed, and cancelled bookings."
+        actions={
+          <>
+            {canSendReminders ? (
+              <Button variant="secondary" onClick={sendReminders}>
+                <FiBell /> Reminders
+              </Button>
+            ) : null}
+            <Button variant="secondary" onClick={refreshAll}>
+              <FiRefreshCw /> Refresh
+            </Button>
+          </>
+        }
+      />
+      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
+      {[assets.error, bookings.error].filter(Boolean).map((error) => (
+        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {error}
+        </div>
+      ))}
+
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <form onSubmit={form.handleSubmit(onBook)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+          <Field label="Asset" error={form.formState.errors.assetId?.message}>
+            <select className={inputClass} {...form.register("assetId")}>
+              <option value="">Select asset</option>
+              {bookableAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.assetTag} - {asset.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Starts" error={form.formState.errors.startsAt?.message}>
+            <input type="datetime-local" className={inputClass} {...form.register("startsAt")} />
+          </Field>
+          <Field label="Ends" error={form.formState.errors.endsAt?.message}>
+            <input type="datetime-local" className={inputClass} {...form.register("endsAt")} />
+          </Field>
+          <Field label="Purpose" error={form.formState.errors.purpose?.message}>
+            <textarea className={`${inputClass} min-h-24 resize-y`} {...form.register("purpose")} />
+          </Field>
+          <Button disabled={form.formState.isSubmitting}>Create Booking</Button>
+        </form>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                onClick={() => setMonth(addMonths(month, -1))}
+                title="Previous month"
+              >
+                <FiChevronLeft />
+              </button>
+              <input
+                type="month"
+                className={`${inputClass} w-44`}
+                value={toMonthInput(month)}
+                onChange={(event) => setMonth(startOfMonth(new Date(`${event.target.value}-01T00:00:00`)))}
+              />
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
+                onClick={() => setMonth(addMonths(month, 1))}
+                title="Next month"
+              >
+                <FiChevronRight />
+              </button>
+            </div>
+            <select className={`${inputClass} md:max-w-48`} value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">All statuses</option>
+              {["UPCOMING", "ONGOING", "COMPLETED", "CANCELLED"].map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-7 overflow-hidden rounded-md border border-slate-200 text-xs font-semibold uppercase tracking-normal text-slate-500">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div key={day} className="border-b border-slate-200 bg-slate-50 px-2 py-2">
+                {day}
+              </div>
+            ))}
+            {days.map((day) => {
+              const dayBookings = rows.filter((booking) => sameDay(new Date(booking.startsAt), day));
+              const inMonth = day.getMonth() === month.getMonth();
+              return (
+                <div key={day.toISOString()} className={`min-h-28 border-b border-r border-slate-100 p-2 ${inMonth ? "bg-white" : "bg-slate-50 text-slate-300"}`}>
+                  <div className="mb-2 text-sm font-bold text-slate-700">{day.getDate()}</div>
+                  <div className="grid gap-1">
+                    {dayBookings.slice(0, 3).map((booking) => (
+                      <div key={booking.id} className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold normal-case text-primary">
+                        {booking.asset?.assetTag} {new Date(booking.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    ))}
+                    {dayBookings.length > 3 ? <div className="text-[11px] normal-case text-slate-400">+{dayBookings.length - 3} more</div> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+
+      <section className="mt-4">
+        <DataTable columns={historyColumns} rows={rows} empty="No bookings found" />
+      </section>
+    </div>
+  );
+}
+
 function GenericWorkflow({ type }) {
   const [title, description] = titles[type] || titles.allocation;
   const assets = useApiResource(() => assetApi.list({ limit: 100 }), []);
@@ -377,5 +596,6 @@ function GenericWorkflow({ type }) {
 export default function Workflows({ type = "allocation" }) {
   if (type === "allocation") return <AllocationModule initialTab="allocations" />;
   if (type === "transfers") return <AllocationModule initialTab="transfer" />;
+  if (type === "bookings") return <BookingModule />;
   return <GenericWorkflow type={type} />;
 }

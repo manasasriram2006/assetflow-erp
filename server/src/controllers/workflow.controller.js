@@ -32,10 +32,11 @@ export const transfers = {
 };
 
 export const bookings = {
-  list: async (req, res) =>
-    res.json(await prisma.booking.findMany({ include: { asset: true, user: true }, orderBy: { startsAt: "desc" } })),
+  list: async (req, res) => res.json(await workflow.listBookings(req.validated?.query || req.query)),
   create: async (req, res) =>
-    res.status(201).json(await workflow.createBooking({ ...req.validated.body, userId: req.user.id }, req.user.id))
+    res.status(201).json(await workflow.createBooking({ ...req.validated.body, userId: req.user.id }, req.user.id)),
+  cancel: async (req, res) => res.json(await workflow.cancelBooking(req.params.id, req.user.id)),
+  reminders: async (req, res) => res.json(await workflow.sendBookingReminders(req.user.id))
 };
 
 export const maintenance = {
