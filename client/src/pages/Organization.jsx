@@ -47,14 +47,38 @@ export default function Organization() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const departments = useApiResource(
-    () => organizationApi.departments.list({ page: deptPage, limit: 8, search: deptSearch, status: deptStatus }),
-    [deptPage, deptSearch, deptStatus]
-  );
-  const categories = useApiResource(
-    () => organizationApi.categories.list({ page: catPage, limit: 8, search: catSearch, status: catStatus }),
-    [catPage, catSearch, catStatus]
-  );
+ const departments = useApiResource(
+  () => {
+    const params = {
+      page: deptPage,
+      limit: 8,
+      search: deptSearch
+    };
+
+    if (deptStatus) {
+      params.status = deptStatus;
+    }
+
+    return organizationApi.departments.list(params);
+  },
+  [deptPage, deptSearch, deptStatus]
+);
+ const categories = useApiResource(
+  () => {
+    const params = {
+      page: catPage,
+      limit: 8,
+      search: catSearch
+    };
+
+    if (catStatus) {
+      params.status = catStatus;
+    }
+
+    return organizationApi.categories.list(params);
+  },
+  [catPage, catSearch, catStatus]
+);
   const activeDepartments = useApiResource(() => organizationApi.departments.list({ limit: 100, status: "ACTIVE" }), []);
   const activeEmployees = useApiResource(() => organizationApi.employees.list({ limit: 100, status: "ACTIVE" }), []);
 
