@@ -1,15 +1,18 @@
 import { z } from "zod";
 
 export const departmentBody = z.object({
-  name: z.string().min(2),
-  code: z.string().min(2).max(12).toUpperCase(),
-  description: z.string().optional()
+  name: z.string().trim().min(2).max(120),
+  code: z.string().trim().min(2).max(12).toUpperCase(),
+  description: z.string().trim().optional().nullable(),
+  parentDepartmentId: z.string().uuid().optional().nullable(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional()
 });
 
 export const categoryBody = z.object({
-  name: z.string().min(2),
-  prefix: z.string().min(2).max(8).toUpperCase(),
-  description: z.string().optional()
+  name: z.string().trim().min(2).max(120),
+  prefix: z.string().trim().min(2).max(8).toUpperCase(),
+  description: z.string().trim().optional().nullable(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional()
 });
 
 export const assetBody = z.object({
@@ -70,3 +73,34 @@ export const auditBody = z.object({
 export const promoteBody = z.object({
   role: z.enum(["ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD", "EMPLOYEE"])
 });
+
+export const assignHeadBody = z.object({
+  userId: z.string().uuid("Invalid employee")
+});
+
+export const employeeCreateBody = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().toLowerCase().email("Invalid email"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Password must include an uppercase letter")
+    .regex(/[a-z]/, "Password must include a lowercase letter")
+    .regex(/[0-9]/, "Password must include a number"),
+  role: z.enum(["ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD", "EMPLOYEE"]).default("EMPLOYEE"),
+  departmentId: z.string().uuid().optional().nullable(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional()
+});
+
+export const employeeUpdateBody = employeeCreateBody
+  .omit({ password: true })
+  .extend({
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[A-Z]/, "Password must include an uppercase letter")
+      .regex(/[a-z]/, "Password must include a lowercase letter")
+      .regex(/[0-9]/, "Password must include a number")
+      .optional()
+  })
+  .partial();

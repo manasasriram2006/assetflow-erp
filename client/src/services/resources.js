@@ -10,6 +10,31 @@ export const authApi = {
   updateProfile: (payload) => api.patch("/auth/profile", payload).then((res) => res.data)
 };
 
+export const organizationApi = {
+  departments: {
+    list: (params) => api.get("/departments", { params }).then((res) => res.data),
+    create: (payload) => api.post("/departments", payload).then((res) => res.data),
+    update: (id, payload) => api.put(`/departments/${id}`, payload).then((res) => res.data),
+    activate: (id) => api.patch(`/departments/${id}/activate`).then((res) => res.data),
+    deactivate: (id) => api.patch(`/departments/${id}/deactivate`).then((res) => res.data),
+    assignHead: (id, userId) => api.patch(`/departments/${id}/head`, { userId }).then((res) => res.data)
+  },
+  categories: {
+    list: (params) => api.get("/categories", { params }).then((res) => res.data),
+    create: (payload) => api.post("/categories", payload).then((res) => res.data),
+    update: (id, payload) => api.put(`/categories/${id}`, payload).then((res) => res.data),
+    activate: (id) => api.patch(`/categories/${id}/activate`).then((res) => res.data),
+    deactivate: (id) => api.patch(`/categories/${id}/deactivate`).then((res) => res.data)
+  },
+  employees: {
+    list: (params) => api.get("/users", { params }).then((res) => res.data),
+    create: (payload) => api.post("/users", payload).then((res) => res.data),
+    update: (id, payload) => api.put(`/users/${id}`, payload).then((res) => res.data),
+    activate: (id) => api.patch(`/users/${id}/activate`).then((res) => res.data),
+    deactivate: (id) => api.patch(`/users/${id}/deactivate`).then((res) => res.data)
+  }
+};
+
 export const resourceApi = (path) => ({
   list: (params) => api.get(path, { params }).then((res) => res.data),
   create: (payload) => api.post(path, payload).then((res) => res.data),

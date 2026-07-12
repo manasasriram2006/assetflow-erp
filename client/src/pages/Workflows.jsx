@@ -16,7 +16,12 @@ const titles = {
 };
 
 const assetApi = resourceApi("/assets");
-const userApi = { list: () => import("../services/api").then(({ api }) => api.get("/users").then((res) => res.data)) };
+const userApi = {
+  list: () =>
+    import("../services/api").then(({ api }) =>
+      api.get("/users", { params: { limit: 100, status: "ACTIVE" } }).then((res) => res.data.items || [])
+    )
+};
 
 export default function Workflows({ type = "allocation" }) {
   const [title, description] = titles[type] || titles.allocation;
