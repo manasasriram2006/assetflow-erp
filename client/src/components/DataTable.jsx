@@ -1,11 +1,26 @@
 import { statusTone } from "../utils/format";
+import { EmptyState } from "./Feedback";
+
+const TableSkeleton = ({ columns }) => (
+  <>
+    {Array.from({ length: 5 }, (_, rowIndex) => (
+      <tr key={rowIndex}>
+        {columns.map((column, columnIndex) => (
+          <td key={`${column.key}-${columnIndex}`}>
+            <div className="skeleton h-4 w-full max-w-32" />
+          </td>
+        ))}
+      </tr>
+    ))}
+  </>
+);
 
 export const Status = ({ value }) => (
   <span className={`status-pill ${statusTone(value)}`}>{String(value || "-").replaceAll("_", " ")}</span>
 );
 
-export const DataTable = ({ columns, rows, empty = "No records found" }) => (
-  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+export const DataTable = ({ columns, rows, empty = "No records found", loading = false }) => (
+  <div className="surface animate-enter overflow-hidden">
     <div className="overflow-x-auto">
       <table className="erp-table min-w-full">
         <thead>
@@ -16,7 +31,9 @@ export const DataTable = ({ columns, rows, empty = "No records found" }) => (
           </tr>
         </thead>
         <tbody>
-          {rows?.length ? (
+          {loading ? (
+            <TableSkeleton columns={columns} />
+          ) : rows?.length ? (
             rows.map((row) => (
               <tr key={row.id}>
                 {columns.map((column) => (
@@ -26,8 +43,8 @@ export const DataTable = ({ columns, rows, empty = "No records found" }) => (
             ))
           ) : (
             <tr>
-              <td colSpan={columns.length} className="text-center text-slate-500">
-                {empty}
+              <td colSpan={columns.length} className="p-0">
+                <EmptyState title={empty} />
               </td>
             </tr>
           )}

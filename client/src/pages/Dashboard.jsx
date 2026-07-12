@@ -25,6 +25,7 @@ import {
   YAxis
 } from "recharts";
 import { Button } from "../components/Button";
+import { Alert } from "../components/Feedback";
 import { PageHeader } from "../components/PageHeader";
 import { StatCard } from "../components/StatCard";
 import { useApiResource } from "../hooks/useApiResource";
@@ -87,7 +88,7 @@ export default function Dashboard() {
         }
       />
 
-      {error ? <div className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div> : null}
+      <Alert tone="warning">{error}</Alert>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard

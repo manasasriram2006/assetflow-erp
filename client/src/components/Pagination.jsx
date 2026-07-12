@@ -6,8 +6,8 @@ export function Pagination({ meta, onPage }) {
   const pages = meta.pages || 1;
 
   return (
-    <div className="mt-3 flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-      <span>
+    <div className="mt-4 flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+      <span className="font-medium">
         Page {page} of {pages} - {meta.total || 0} records
       </span>
       <div className="flex gap-2">

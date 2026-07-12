@@ -21,6 +21,7 @@ import {
 } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { DataTable, Status } from "../components/DataTable";
+import { Alert } from "../components/Feedback";
 import { Field, inputClass } from "../components/Input";
 import { PageHeader } from "../components/PageHeader";
 import { useAuth } from "../context/AuthContext";
@@ -117,6 +118,15 @@ const readFileAsDataUrl = (file) =>
     reader.onerror = () => reject(new Error("Could not read file"));
     reader.readAsDataURL(file);
   });
+
+const ErrorList = ({ errors }) =>
+  errors
+    .filter(Boolean)
+    .map((error) => (
+      <Alert key={error} tone="warning">
+        {error}
+      </Alert>
+    ));
 
 function AllocationModule({ initialTab = "allocations" }) {
   const { user } = useAuth();
@@ -233,12 +243,8 @@ function AllocationModule({ initialTab = "allocations" }) {
           </Button>
         }
       />
-      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
-      {[assets.error, allocations.error, transfers.error, history.error].filter(Boolean).map((error) => (
-        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          {error}
-        </div>
-      ))}
+      <Alert tone="success">{message}</Alert>
+      <ErrorList errors={[assets.error, allocations.error, transfers.error, history.error]} />
 
       <div className="mb-4 flex flex-wrap gap-2">
         {[
@@ -428,12 +434,8 @@ function BookingModule() {
           </>
         }
       />
-      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
-      {[assets.error, bookings.error].filter(Boolean).map((error) => (
-        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          {error}
-        </div>
-      ))}
+      <Alert tone="success">{message}</Alert>
+      <ErrorList errors={[assets.error, bookings.error]} />
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <form onSubmit={form.handleSubmit(onBook)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
@@ -636,12 +638,8 @@ function MaintenanceModule() {
           </Button>
         }
       />
-      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
-      {[assets.error, users.error, requests.error, history.error].filter(Boolean).map((error) => (
-        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          {error}
-        </div>
-      ))}
+      <Alert tone="success">{message}</Alert>
+      <ErrorList errors={[assets.error, users.error, requests.error, history.error]} />
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
@@ -890,12 +888,8 @@ function AuditModule() {
           </Button>
         }
       />
-      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
-      {[assets.error, users.error, audits.error, history.error].filter(Boolean).map((error) => (
-        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          {error}
-        </div>
-      ))}
+      <Alert tone="success">{message}</Alert>
+      <ErrorList errors={[assets.error, users.error, audits.error, history.error]} />
 
       <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
         <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
@@ -1170,7 +1164,7 @@ function GenericWorkflow({ type }) {
           <Button>Create</Button>
         </div>
       </form>
-      {records.error ? <div className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">{records.error}</div> : null}
+      <Alert tone="warning">{records.error}</Alert>
       <DataTable columns={columns[type]} rows={records.data || []} />
     </div>
   );

@@ -15,6 +15,7 @@ import {
 } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { DataTable, Status } from "../components/DataTable";
+import { Alert, EmptyState } from "../components/Feedback";
 import { Field, inputClass } from "../components/Input";
 import { PageHeader } from "../components/PageHeader";
 import { Pagination } from "../components/Pagination";
@@ -252,14 +253,14 @@ export default function Assets({ initialTab = "directory" }) {
         }
       />
 
-      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
-      {error ? <div className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div> : null}
+      <Alert tone="success">{message}</Alert>
+      <Alert tone="warning">{error}</Alert>
 
-      <div className="mb-4 flex gap-2">
-        <button onClick={() => setTab("directory")} className={`rounded-md px-3 py-2 text-sm font-semibold ${tab === "directory" ? "bg-primary text-white" : "bg-white text-slate-600"}`}>
+      <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+        <button onClick={() => setTab("directory")} className={`focus-ring rounded-md px-3 py-2 text-sm font-semibold transition ${tab === "directory" ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-50"}`}>
           Directory
         </button>
-        <button onClick={startCreate} className={`rounded-md px-3 py-2 text-sm font-semibold ${tab === "register" ? "bg-primary text-white" : "bg-white text-slate-600"}`}>
+        <button onClick={startCreate} className={`focus-ring rounded-md px-3 py-2 text-sm font-semibold transition ${tab === "register" ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-50"}`}>
           Registration
         </button>
       </div>
@@ -267,7 +268,7 @@ export default function Assets({ initialTab = "directory" }) {
       {tab === "directory" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <section>
-            <div className="mb-3 grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-soft md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
+            <div className="surface animate-enter mb-4 grid gap-2 p-3 md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
               <label className="relative">
                 <FiSearch className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input className={`${inputClass} pl-9`} value={search} onChange={(event) => setFilter(setSearch)(event.target.value)} placeholder="Search tag, name, serial, location" />
@@ -297,12 +298,12 @@ export default function Assets({ initialTab = "directory" }) {
                 ))}
               </select>
             </div>
-            <DataTable columns={columns} rows={rows} empty={loading ? "Loading assets" : "No assets found"} />
+            <DataTable columns={columns} rows={rows} empty="No assets found" loading={loading} />
             <Pagination meta={data?.meta} onPage={setPage} />
           </section>
 
-          <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
-            {selectedError ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">{selectedError}</div> : null}
+          <aside className="surface animate-enter p-4">
+            <Alert tone="warning" className="mb-3">{selectedError}</Alert>
             {selectedAsset ? (
               <div className="grid gap-4">
                 <div className="aspect-[4/3] overflow-hidden rounded-md border border-slate-200 bg-slate-50">
@@ -367,12 +368,12 @@ export default function Assets({ initialTab = "directory" }) {
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-64 items-center justify-center text-center text-sm text-slate-500">Select an asset to view photo and history</div>
+              <EmptyState title="Select an asset" description="Asset photo, metadata, and history will appear here." />
             )}
           </aside>
         </div>
       ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="surface animate-enter grid gap-4 p-4 md:grid-cols-2">
           <Field label="Asset Name" error={errors.name?.message}>
             <input className={inputClass} {...register("name")} />
           </Field>

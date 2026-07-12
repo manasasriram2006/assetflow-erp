@@ -4,6 +4,7 @@ import { FiEdit2, FiPower, FiUserCheck } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { DataTable, Status } from "../components/DataTable";
 import { EntityForm } from "../components/EntityForm";
+import { Alert, Modal } from "../components/Feedback";
 import { ListToolbar } from "../components/ListToolbar";
 import { PageHeader } from "../components/PageHeader";
 import { Pagination } from "../components/Pagination";
@@ -52,6 +53,7 @@ export default function Employees() {
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const employees = useApiResource(
     () => organizationApi.employees.list({ page, limit: 10, search, status, role, departmentId }),
@@ -93,6 +95,7 @@ export default function Employees() {
   const saveEmployee = async (values) => {
     try {
       setError("");
+      setMessage("");
       const payload = {
         ...values,
         departmentId: values.departmentId || null,
@@ -103,6 +106,7 @@ export default function Employees() {
       if (editing) await organizationApi.employees.update(editing.id, payload);
       else await organizationApi.employees.create(payload);
 
+      setMessage(editing ? "Employee updated successfully." : "Employee created successfully.");
       setEditing(null);
       setShowForm(false);
       refresh();
@@ -114,7 +118,9 @@ export default function Employees() {
   const updateEmployee = async (row, patch) => {
     try {
       setError("");
+      setMessage("");
       await organizationApi.employees.update(row.id, patch);
+      setMessage("Employee updated successfully.");
       refresh();
     } catch (err) {
       setError(err.message);
@@ -124,8 +130,10 @@ export default function Employees() {
   const toggleEmployee = async (row) => {
     try {
       setError("");
+      setMessage("");
       if (row.status === "ACTIVE") await organizationApi.employees.deactivate(row.id);
       else await organizationApi.employees.activate(row.id);
+      setMessage(row.status === "ACTIVE" ? "Employee deactivated." : "Employee activated.");
       refresh();
     } catch (err) {
       setError(err.message);
@@ -138,7 +146,8 @@ export default function Employees() {
         title="Employees"
         description="Create employees, assign departments, update roles, and activate or deactivate access."
       />
-      {error ? <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-danger">{error}</div> : null}
+      <Alert tone="success">{message}</Alert>
+      <Alert tone="error">{error}</Alert>
 
       <ListToolbar
         search={search}
@@ -192,35 +201,43 @@ export default function Employees() {
         addLabel="Add Employee"
       />
 
-      {showForm ? (
-        <div className="mb-4">
-          <EntityForm
-            schema={editing ? updateSchema : createSchema}
-            fields={fields}
-            defaultValues={
-              editing
-                ? {
-                    name: editing.name || "",
-                    email: editing.email || "",
-                    password: "",
-                    departmentId: editing.departmentId || "",
-                    role: editing.role || "EMPLOYEE",
-                    status: editing.status || "ACTIVE"
-                  }
-                : blankEmployee
-            }
-            submitLabel={editing ? "Update Employee" : "Create Employee"}
-            onSubmit={saveEmployee}
-            onCancel={() => {
-              setEditing(null);
-              setShowForm(false);
-            }}
-          />
-        </div>
-      ) : null}
+      <Modal
+        open={showForm}
+        title={editing ? "Edit Employee" : "Add Employee"}
+        description="Manage employee identity, role, department, and account status."
+        onClose={() => {
+          setEditing(null);
+          setShowForm(false);
+        }}
+      >
+        <EntityForm
+          schema={editing ? updateSchema : createSchema}
+          fields={fields}
+          defaultValues={
+            editing
+              ? {
+                  name: editing.name || "",
+                  email: editing.email || "",
+                  password: "",
+                  departmentId: editing.departmentId || "",
+                  role: editing.role || "EMPLOYEE",
+                  status: editing.status || "ACTIVE"
+                }
+              : blankEmployee
+          }
+          submitLabel={editing ? "Update Employee" : "Create Employee"}
+          onSubmit={saveEmployee}
+          onCancel={() => {
+            setEditing(null);
+            setShowForm(false);
+          }}
+          framed={false}
+        />
+      </Modal>
 
       <DataTable
         rows={employees.data?.items || []}
+        loading={employees.loading}
         columns={[
           { key: "name", header: "Name" },
           { key: "email", header: "Email" },

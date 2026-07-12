@@ -5,6 +5,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/Button";
+import { Alert } from "../components/Feedback";
 import { Field, inputClass } from "../components/Input";
 
 const schema = z.object({
@@ -39,8 +40,9 @@ export default function Signup() {
   };
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-100 px-4">
-      <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
+    <main className="grid min-h-screen place-items-center bg-slate-100 px-4 py-10">
+      <section className="animate-enter w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-900/10">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary font-black text-white">AF</div>
         <p className="text-sm font-semibold text-primary">AssetFlow ERP</p>
         <h1 className="mb-6 text-2xl font-bold text-slate-950">Employee Signup</h1>
         <form className="grid gap-4" onSubmit={handleSubmit(onSubmit)}>
@@ -53,7 +55,7 @@ export default function Signup() {
           <Field label="Password" error={errors.password?.message}>
             <input type="password" className={inputClass} {...register("password")} />
           </Field>
-          {error ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
+          <Alert tone="error" className="mb-0">{error}</Alert>
           <Button disabled={isSubmitting}>Create Employee Account</Button>
         </form>
         <p className="mt-4 text-sm text-slate-500">

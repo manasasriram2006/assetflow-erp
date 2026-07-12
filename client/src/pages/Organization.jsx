@@ -4,6 +4,7 @@ import { FiEdit2, FiPower, FiUserCheck } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { DataTable, Status } from "../components/DataTable";
 import { EntityForm } from "../components/EntityForm";
+import { Alert, Modal } from "../components/Feedback";
 import { ListToolbar } from "../components/ListToolbar";
 import { PageHeader } from "../components/PageHeader";
 import { Pagination } from "../components/Pagination";
@@ -44,6 +45,7 @@ export default function Organization() {
   const [catEditing, setCatEditing] = useState(null);
   const [showCatForm, setShowCatForm] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const departments = useApiResource(
     () => organizationApi.departments.list({ page: deptPage, limit: 8, search: deptSearch, status: deptStatus }),
@@ -95,9 +97,11 @@ export default function Organization() {
   const saveDepartment = async (values) => {
     try {
       setError("");
+      setMessage("");
       const payload = { ...values, code: values.code.toUpperCase(), parentDepartmentId: values.parentDepartmentId || null };
       if (deptEditing) await organizationApi.departments.update(deptEditing.id, payload);
       else await organizationApi.departments.create(payload);
+      setMessage(deptEditing ? "Department updated successfully." : "Department created successfully.");
       setShowDeptForm(false);
       setDeptEditing(null);
       departments.refresh();
@@ -110,9 +114,11 @@ export default function Organization() {
   const saveCategory = async (values) => {
     try {
       setError("");
+      setMessage("");
       const payload = { ...values, prefix: values.prefix.toUpperCase() };
       if (catEditing) await organizationApi.categories.update(catEditing.id, payload);
       else await organizationApi.categories.create(payload);
+      setMessage(catEditing ? "Category updated successfully." : "Category created successfully.");
       setShowCatForm(false);
       setCatEditing(null);
       categories.refresh();
@@ -122,21 +128,27 @@ export default function Organization() {
   };
 
   const toggleDepartment = async (row) => {
+    setMessage("");
     if (row.status === "ACTIVE") await organizationApi.departments.deactivate(row.id);
     else await organizationApi.departments.activate(row.id);
+    setMessage(row.status === "ACTIVE" ? "Department deactivated." : "Department activated.");
     departments.refresh();
     activeDepartments.refresh();
   };
 
   const toggleCategory = async (row) => {
+    setMessage("");
     if (row.status === "ACTIVE") await organizationApi.categories.deactivate(row.id);
     else await organizationApi.categories.activate(row.id);
+    setMessage(row.status === "ACTIVE" ? "Category deactivated." : "Category activated.");
     categories.refresh();
   };
 
   const assignHead = async (departmentId, userId) => {
     if (!userId) return;
+    setMessage("");
     await organizationApi.departments.assignHead(departmentId, userId);
+    setMessage("Department head assigned.");
     departments.refresh();
     activeEmployees.refresh();
   };
@@ -147,7 +159,8 @@ export default function Organization() {
         title="Organization Setup"
         description="Create departments, define hierarchy, assign department heads, manage category prefixes, and control active status."
       />
-      {error ? <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-danger">{error}</div> : null}
+      <Alert tone="success">{message}</Alert>
+      <Alert tone="error">{error}</Alert>
 
       <div className="grid gap-6">
         <section>
@@ -171,33 +184,41 @@ export default function Organization() {
             }}
             addLabel="Add Department"
           />
-          {showDeptForm ? (
-            <div className="mb-4">
-              <EntityForm
-                schema={departmentSchema}
-                fields={departmentFields}
-                defaultValues={
-                  deptEditing
-                    ? {
-                        name: deptEditing.name || "",
-                        code: deptEditing.code || "",
-                        description: deptEditing.description || "",
-                        parentDepartmentId: deptEditing.parentDepartmentId || "",
-                        status: deptEditing.status || "ACTIVE"
-                      }
-                    : blankDepartment
-                }
-                submitLabel={deptEditing ? "Update Department" : "Create Department"}
-                onSubmit={saveDepartment}
-                onCancel={() => {
-                  setDeptEditing(null);
-                  setShowDeptForm(false);
-                }}
-              />
-            </div>
-          ) : null}
+          <Modal
+            open={showDeptForm}
+            title={deptEditing ? "Edit Department" : "Add Department"}
+            description="Define department structure, hierarchy, and active status."
+            onClose={() => {
+              setDeptEditing(null);
+              setShowDeptForm(false);
+            }}
+          >
+            <EntityForm
+              schema={departmentSchema}
+              fields={departmentFields}
+              defaultValues={
+                deptEditing
+                  ? {
+                      name: deptEditing.name || "",
+                      code: deptEditing.code || "",
+                      description: deptEditing.description || "",
+                      parentDepartmentId: deptEditing.parentDepartmentId || "",
+                      status: deptEditing.status || "ACTIVE"
+                    }
+                  : blankDepartment
+              }
+              submitLabel={deptEditing ? "Update Department" : "Create Department"}
+              onSubmit={saveDepartment}
+              onCancel={() => {
+                setDeptEditing(null);
+                setShowDeptForm(false);
+              }}
+              framed={false}
+            />
+          </Modal>
           <DataTable
             rows={departments.data?.items || []}
+            loading={departments.loading}
             columns={[
               { key: "name", header: "Name" },
               { key: "code", header: "Code" },
@@ -267,32 +288,40 @@ export default function Organization() {
             }}
             addLabel="Add Category"
           />
-          {showCatForm ? (
-            <div className="mb-4">
-              <EntityForm
-                schema={categorySchema}
-                fields={categoryFields}
-                defaultValues={
-                  catEditing
-                    ? {
-                        name: catEditing.name || "",
-                        prefix: catEditing.prefix || "",
-                        description: catEditing.description || "",
-                        status: catEditing.status || "ACTIVE"
-                      }
-                    : blankCategory
-                }
-                submitLabel={catEditing ? "Update Category" : "Create Category"}
-                onSubmit={saveCategory}
-                onCancel={() => {
-                  setCatEditing(null);
-                  setShowCatForm(false);
-                }}
-              />
-            </div>
-          ) : null}
+          <Modal
+            open={showCatForm}
+            title={catEditing ? "Edit Category" : "Add Category"}
+            description="Manage category names, prefixes, and availability."
+            onClose={() => {
+              setCatEditing(null);
+              setShowCatForm(false);
+            }}
+          >
+            <EntityForm
+              schema={categorySchema}
+              fields={categoryFields}
+              defaultValues={
+                catEditing
+                  ? {
+                      name: catEditing.name || "",
+                      prefix: catEditing.prefix || "",
+                      description: catEditing.description || "",
+                      status: catEditing.status || "ACTIVE"
+                    }
+                  : blankCategory
+              }
+              submitLabel={catEditing ? "Update Category" : "Create Category"}
+              onSubmit={saveCategory}
+              onCancel={() => {
+                setCatEditing(null);
+                setShowCatForm(false);
+              }}
+              framed={false}
+            />
+          </Modal>
           <DataTable
             rows={categories.data?.items || []}
+            loading={categories.loading}
             columns={[
               { key: "name", header: "Name" },
               { key: "prefix", header: "Prefix" },

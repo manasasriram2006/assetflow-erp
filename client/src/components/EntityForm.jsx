@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "./Button";
 import { Field, inputClass } from "./Input";
 
-export function EntityForm({ schema, fields, defaultValues, submitLabel = "Save", onSubmit, onCancel }) {
+export function EntityForm({ schema, fields, defaultValues, submitLabel = "Save", onSubmit, onCancel, framed = true }) {
   const {
     register,
     handleSubmit,
@@ -17,7 +17,7 @@ export function EntityForm({ schema, fields, defaultValues, submitLabel = "Save"
   }, [defaultValues, reset]);
 
   return (
-    <form className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:grid-cols-2 xl:grid-cols-3" onSubmit={handleSubmit(onSubmit)}>
+    <form className={`grid gap-3 md:grid-cols-2 xl:grid-cols-3 ${framed ? "surface animate-enter p-4" : ""}`} onSubmit={handleSubmit(onSubmit)}>
       {fields.map((field) => (
         <Field key={field.name} label={field.label} error={errors[field.name]?.message}>
           {field.type === "select" ? (

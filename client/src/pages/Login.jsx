@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { FiLogIn } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/Button";
+import { Alert } from "../components/Feedback";
 import { Field, inputClass } from "../components/Input";
 
 const schema = z.object({
@@ -38,9 +39,10 @@ export default function Login() {
   };
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-100 px-4">
-      <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
+    <main className="grid min-h-screen place-items-center bg-slate-100 px-4 py-10">
+      <section className="animate-enter w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-900/10">
         <div className="mb-6">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-primary font-black text-white">AF</div>
           <p className="text-sm font-semibold text-primary">AssetFlow ERP</p>
           <h1 className="text-2xl font-bold text-slate-950">Login</h1>
           <p className="mt-1 text-sm text-slate-500">Access assets, allocations, audits, and reports.</p>
@@ -57,7 +59,7 @@ export default function Login() {
               Forgot password?
             </Link>
           </div>
-          {error ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</div> : null}
+          <Alert tone="error" className="mb-0">{error}</Alert>
           <Button disabled={isSubmitting}>
             <FiLogIn /> Login
           </Button>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FiArchive, FiBell, FiCalendar, FiCheck, FiClipboard, FiRefreshCw, FiRepeat, FiTool } from "react-icons/fi";
 import { Button } from "../components/Button";
 import { Status } from "../components/DataTable";
+import { Alert, EmptyState } from "../components/Feedback";
 import { inputClass } from "../components/Input";
 import { PageHeader } from "../components/PageHeader";
 import { useApiResource } from "../hooks/useApiResource";
@@ -86,10 +87,8 @@ export default function Notifications() {
         }
       />
 
-      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
-      {notifications.error ? (
-        <div className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">{notifications.error}</div>
-      ) : null}
+      <Alert tone="success">{message}</Alert>
+      <Alert tone="warning">{notifications.error}</Alert>
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {categories.map(([key, label, Icon]) => (
@@ -100,7 +99,7 @@ export default function Notifications() {
               setCategory(key);
               setType("");
             }}
-            className={`rounded-lg border p-4 text-left shadow-soft transition ${
+            className={`focus-ring rounded-lg border p-4 text-left shadow-soft transition hover:-translate-y-0.5 ${
               category === key ? "border-blue-200 bg-blue-50 text-primary" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
@@ -113,7 +112,7 @@ export default function Notifications() {
         ))}
       </section>
 
-      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-soft md:flex-row md:items-center">
+      <div className="surface animate-enter mb-4 flex flex-col gap-3 p-4 md:flex-row md:items-center">
         <select className={`${inputClass} md:max-w-64`} value={type} onChange={(event) => setType(event.target.value)}>
           <option value="">All notification types</option>
           {types
@@ -161,8 +160,8 @@ export default function Notifications() {
           </article>
         ))}
         {!rows.length ? (
-          <div className="rounded-lg border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-            No notifications found.
+          <div className="surface">
+            <EmptyState title="No notifications found." />
           </div>
         ) : null}
       </div>
