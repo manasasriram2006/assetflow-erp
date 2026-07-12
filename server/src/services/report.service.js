@@ -230,7 +230,7 @@ export const dashboard = async () => {
 };
 
 export const csv = async () => {
-  const assets = await prisma.asset.findMany({ include: { category: true, department: true } });
+  const assets = await prisma.asset.findMany({ where: { deletedAt: null }, include: { category: true, department: true } });
   const rows = assets.map((asset) => [
     asset.assetTag,
     asset.name,

@@ -11,7 +11,8 @@ export const paginationQuery = z.object({
     search: z.string().optional(),
     status: z.string().optional(),
     role: z.string().optional(),
-    departmentId: z.string().uuid().optional()
+    departmentId: z.string().uuid().optional(),
+    categoryId: z.string().uuid().optional()
   })
 });
 

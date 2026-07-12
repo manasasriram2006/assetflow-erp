@@ -16,14 +16,21 @@ export const categoryBody = z.object({
 });
 
 export const assetBody = z.object({
-  name: z.string().min(2),
-  serialNo: z.string().optional(),
+  name: z.string().trim().min(2).max(160),
+  serialNo: z.string().trim().max(120).optional().nullable(),
   status: z.enum(["AVAILABLE", "ALLOCATED", "RESERVED", "MAINTENANCE", "LOST", "RETIRED", "DISPOSED"]).optional(),
   value: z.coerce.number().nonnegative().optional(),
   purchaseDate: z.coerce.date().optional(),
-  location: z.string().optional(),
+  location: z.string().trim().max(160).optional().nullable(),
   categoryId: z.string().uuid(),
-  departmentId: z.string().uuid().optional()
+  departmentId: z.string().uuid().optional().nullable()
+});
+
+export const assetPhotoBody = z.object({
+  fileName: z.string().trim().min(1).max(180),
+  photoData: z
+    .string()
+    .regex(/^data:image\/(png|jpeg|jpg|webp);base64,/i, "Photo must be a PNG, JPG, or WEBP data URL")
 });
 
 export const allocationBody = z

@@ -12,7 +12,10 @@ export const crudController = (model, searchFields = []) => ({
 export const assets = {
   list: async (req, res) => res.json(await assetService.listAssets(req.validated?.query || req.query)),
   get: async (req, res) => res.json(await assetService.getAsset(req.params.id)),
-  create: async (req, res) => res.status(201).json(await assetService.createAsset(req.validated.body)),
-  update: async (req, res) => res.json(await assetService.updateAsset(req.params.id, req.validated.body)),
-  remove: async (req, res) => res.status(204).json(await assetService.deleteAsset(req.params.id))
+  history: async (req, res) => res.json(await assetService.getAssetHistory(req.params.id)),
+  create: async (req, res) => res.status(201).json(await assetService.createAsset(req.validated.body, req.user?.id)),
+  update: async (req, res) => res.json(await assetService.updateAsset(req.params.id, req.validated.body, req.user?.id)),
+  uploadPhoto: async (req, res) =>
+    res.json(await assetService.uploadAssetPhoto(req.params.id, req.validated.body, req.user?.id)),
+  remove: async (req, res) => res.status(204).json(await assetService.deleteAsset(req.params.id, req.user?.id))
 };

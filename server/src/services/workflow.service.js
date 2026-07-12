@@ -1,12 +1,12 @@
 import { prisma } from "../config/prisma.js";
 import { HttpError, notFound } from "../utils/httpError.js";
-import { assertAssetAvailable } from "./asset.service.js";
+import { assertAssetAvailable, setAssetStatus } from "./asset.service.js";
 
-export const allocateAsset = async ({ assetId, userId, dueAt, notes }) => {
+export const allocateAsset = async ({ assetId, userId, dueAt, notes }, actorId) => {
   await assertAssetAvailable(assetId);
   return prisma.$transaction(async (tx) => {
     const allocation = await tx.allocation.create({ data: { assetId, userId, dueAt, notes } });
-    await tx.asset.update({ where: { id: assetId }, data: { status: "ALLOCATED" } });
+    await setAssetStatus(tx, assetId, "ALLOCATED", actorId, "ALLOCATED", "Asset allocated to an employee");
     await tx.notification.create({
       data: { userId, type: "ASSET_ASSIGNED", title: "Asset assigned", message: "An asset has been allocated to you." }
     });
@@ -14,7 +14,7 @@ export const allocateAsset = async ({ assetId, userId, dueAt, notes }) => {
   });
 };
 
-export const returnAsset = async (allocationId) => {
+export const returnAsset = async (allocationId, actorId) => {
   const allocation = await prisma.allocation.findUnique({ where: { id: allocationId } });
   if (!allocation) throw notFound("Allocation");
   if (allocation.status === "RETURNED") throw new HttpError(409, "Allocation is already returned");
@@ -24,7 +24,7 @@ export const returnAsset = async (allocationId) => {
       where: { id: allocationId },
       data: { status: "RETURNED", returnedAt: new Date() }
     });
-    await tx.asset.update({ where: { id: allocation.assetId }, data: { status: "AVAILABLE" } });
+    await setAssetStatus(tx, allocation.assetId, "AVAILABLE", actorId, "RETURNED", "Asset returned and made available");
     return returned;
   });
 };
@@ -51,7 +51,7 @@ export const decideTransfer = async (id, status) => {
   return updated;
 };
 
-export const createBooking = async ({ assetId, userId, startsAt, endsAt, purpose }) => {
+export const createBooking = async ({ assetId, userId, startsAt, endsAt, purpose }, actorId) => {
   const overlap = await prisma.booking.findFirst({
     where: {
       assetId,
@@ -63,28 +63,28 @@ export const createBooking = async ({ assetId, userId, startsAt, endsAt, purpose
   if (overlap) throw new HttpError(409, "Booking overlaps an existing booking");
   return prisma.$transaction(async (tx) => {
     const booking = await tx.booking.create({ data: { assetId, userId, startsAt, endsAt, purpose } });
-    await tx.asset.update({ where: { id: assetId }, data: { status: "RESERVED" } });
+    await setAssetStatus(tx, assetId, "RESERVED", actorId, "RESERVED", "Asset reserved through booking");
     return booking;
   });
 };
 
-export const createMaintenance = async ({ assetId, requesterId, title, description, scheduledAt }) => {
+export const createMaintenance = async ({ assetId, requesterId, title, description, scheduledAt }, actorId) => {
   return prisma.$transaction(async (tx) => {
     const request = await tx.maintenanceRequest.create({
       data: { assetId, requesterId, title, description, scheduledAt }
     });
-    await tx.asset.update({ where: { id: assetId }, data: { status: "MAINTENANCE" } });
+    await setAssetStatus(tx, assetId, "MAINTENANCE", actorId, "MAINTENANCE_REQUESTED", title);
     return request;
   });
 };
 
-export const updateMaintenanceStatus = async (id, data) => {
+export const updateMaintenanceStatus = async (id, data, actorId) => {
   const request = await prisma.maintenanceRequest.findUnique({ where: { id } });
   if (!request) throw notFound("Maintenance request");
   return prisma.$transaction(async (tx) => {
     const updated = await tx.maintenanceRequest.update({ where: { id }, data });
     if (data.status === "RESOLVED") {
-      await tx.asset.update({ where: { id: request.assetId }, data: { status: "AVAILABLE" } });
+      await setAssetStatus(tx, request.assetId, "AVAILABLE", actorId, "MAINTENANCE_RESOLVED", request.title);
     }
     if (data.status === "APPROVED") {
       await tx.notification.create({

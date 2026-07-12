@@ -4,8 +4,8 @@ import * as workflow from "../services/workflow.service.js";
 export const allocations = {
   list: async (req, res) =>
     res.json(await prisma.allocation.findMany({ include: { asset: true, user: true }, orderBy: { issuedAt: "desc" } })),
-  create: async (req, res) => res.status(201).json(await workflow.allocateAsset(req.validated.body)),
-  returnAsset: async (req, res) => res.json(await workflow.returnAsset(req.params.id))
+  create: async (req, res) => res.status(201).json(await workflow.allocateAsset(req.validated.body, req.user.id)),
+  returnAsset: async (req, res) => res.json(await workflow.returnAsset(req.params.id, req.user.id))
 };
 
 export const transfers = {
@@ -25,7 +25,7 @@ export const bookings = {
   list: async (req, res) =>
     res.json(await prisma.booking.findMany({ include: { asset: true, user: true }, orderBy: { startsAt: "desc" } })),
   create: async (req, res) =>
-    res.status(201).json(await workflow.createBooking({ ...req.validated.body, userId: req.user.id }))
+    res.status(201).json(await workflow.createBooking({ ...req.validated.body, userId: req.user.id }, req.user.id))
 };
 
 export const maintenance = {
@@ -37,8 +37,10 @@ export const maintenance = {
       })
     ),
   create: async (req, res) =>
-    res.status(201).json(await workflow.createMaintenance({ ...req.validated.body, requesterId: req.user.id })),
-  updateStatus: async (req, res) => res.json(await workflow.updateMaintenanceStatus(req.params.id, req.body))
+    res.status(201).json(
+      await workflow.createMaintenance({ ...req.validated.body, requesterId: req.user.id }, req.user.id)
+    ),
+  updateStatus: async (req, res) => res.json(await workflow.updateMaintenanceStatus(req.params.id, req.body, req.user.id))
 };
 
 export const audits = {
