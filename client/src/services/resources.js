@@ -67,7 +67,12 @@ export const workflowApi = {
   assignMaintenanceTechnician: (id, payload) => api.patch(`/maintenance/${id}/technician`, payload).then((res) => res.data),
   uploadMaintenanceAttachment: (id, payload) => api.post(`/maintenance/${id}/attachments`, payload).then((res) => res.data),
   audits: () => api.get("/audits").then((res) => res.data),
-  createAudit: (payload) => api.post("/audits", payload).then((res) => res.data)
+  auditHistory: () => api.get("/audits/history").then((res) => res.data),
+  createAudit: (payload) => api.post("/audits", payload).then((res) => res.data),
+  auditDiscrepancies: (id) => api.get(`/audits/${id}/discrepancies`).then((res) => res.data),
+  assignAuditAuditor: (itemId, payload) => api.patch(`/audits/items/${itemId}/auditor`, payload).then((res) => res.data),
+  verifyAuditItem: (itemId, payload) => api.patch(`/audits/items/${itemId}/verify`, payload).then((res) => res.data),
+  closeAudit: (id) => api.post(`/audits/${id}/close`).then((res) => res.data)
 };
 
 export const notificationApi = {

@@ -6,7 +6,9 @@ import { validate } from "../middleware/validate.middleware.js";
 import { idParam } from "../validators/common.validators.js";
 import {
   allocationBody,
+  auditAssignBody,
   auditBody,
+  auditVerifyBody,
   bookingBody,
   bookingQuery,
   maintenanceAssignBody,
@@ -93,6 +95,17 @@ maintenanceRoutes.post(
 export const auditRoutes = Router();
 auditRoutes.use(authenticate, authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"));
 auditRoutes.get("/", asyncHandler(audits.list));
+auditRoutes.get("/history", asyncHandler(audits.history));
 auditRoutes.post("/", validate(z.object({ body: auditBody })), asyncHandler(audits.create));
-auditRoutes.patch("/items/:id", validate(idParam), asyncHandler(audits.verifyItem));
+auditRoutes.get("/:id/discrepancies", validate(idParam), asyncHandler(audits.discrepancyReport));
+auditRoutes.patch(
+  "/items/:id/auditor",
+  validate(z.object({ params: idParam.shape.params, body: auditAssignBody })),
+  asyncHandler(audits.assignAuditor)
+);
+auditRoutes.patch(
+  "/items/:id/verify",
+  validate(z.object({ params: idParam.shape.params, body: auditVerifyBody })),
+  asyncHandler(audits.verifyItem)
+);
 auditRoutes.post("/:id/close", validate(idParam), asyncHandler(audits.close));

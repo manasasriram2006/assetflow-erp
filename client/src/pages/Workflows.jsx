@@ -3,16 +3,20 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  FiAlertTriangle,
   FiBell,
   FiCheck,
   FiChevronLeft,
   FiChevronRight,
+  FiClipboard,
+  FiFileText,
   FiPaperclip,
   FiRefreshCw,
   FiRotateCcw,
   FiSend,
   FiTool,
   FiUpload,
+  FiUserCheck,
   FiX
 } from "react-icons/fi";
 import { Button } from "../components/Button";
@@ -79,6 +83,18 @@ const maintenanceSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
   scheduledAt: z.preprocess((value) => (value === "" ? undefined : value), z.string().optional())
 });
+
+const auditSchema = z
+  .object({
+    name: z.string().trim().min(3, "Audit name is required").max(160),
+    startsAt: z.string().min(1, "Start date is required"),
+    endsAt: z.preprocess((value) => (value === "" ? undefined : value), z.string().optional()),
+    assetIds: z.array(z.string()).min(1, "Select at least one asset")
+  })
+  .refine((data) => !data.endsAt || new Date(data.endsAt) >= new Date(data.startsAt), {
+    message: "End must be after start",
+    path: ["endsAt"]
+  });
 
 const canApprove = (role) => ["ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"].includes(role);
 
@@ -762,6 +778,291 @@ function MaintenanceModule() {
   );
 }
 
+function AuditModule() {
+  const [message, setMessage] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [auditorByItem, setAuditorByItem] = useState({});
+  const [notesByItem, setNotesByItem] = useState({});
+  const [report, setReport] = useState(null);
+  const assets = useApiResource(() => assetApi.list({ limit: 100 }), []);
+  const users = useApiResource(userApi.list, []);
+  const audits = useApiResource(workflowApi.audits, []);
+  const history = useApiResource(workflowApi.auditHistory, []);
+  const form = useForm({
+    resolver: zodResolver(auditSchema),
+    defaultValues: { name: "", startsAt: "", endsAt: "", assetIds: [] }
+  });
+
+  const rows = audits.data || [];
+  const selected = rows.find((row) => row.id === selectedId) || rows[0];
+  const auditItems = selected?.items || [];
+  const auditors = users.data || [];
+  const assetRows = assets.data?.items || [];
+  const missingItems = auditItems.filter((item) => item.status === "MISSING");
+  const damagedItems = auditItems.filter((item) => item.status === "DAMAGED");
+  const uncheckedItems = auditItems.filter((item) => item.status === "UNCHECKED");
+
+  const refreshAll = () => {
+    assets.refresh();
+    audits.refresh();
+    history.refresh();
+  };
+
+  const onCreate = async (values) => {
+    await workflowApi.createAudit({
+      ...values,
+      endsAt: values.endsAt || undefined,
+      assetIds: Array.isArray(values.assetIds) ? values.assetIds : [values.assetIds]
+    });
+    form.reset({ name: "", startsAt: "", endsAt: "", assetIds: [] });
+    setReport(null);
+    setMessage("Audit cycle created");
+    refreshAll();
+  };
+
+  const assignAuditor = async (item) => {
+    const auditorId = auditorByItem[item.id];
+    if (!auditorId) return;
+    await workflowApi.assignAuditAuditor(item.id, { auditorId });
+    setMessage("Auditor assigned");
+    refreshAll();
+  };
+
+  const verifyItem = async (item, status) => {
+    await workflowApi.verifyAuditItem(item.id, {
+      status,
+      notes: notesByItem[item.id] || undefined
+    });
+    setNotesByItem((current) => ({ ...current, [item.id]: "" }));
+    setReport(null);
+    setMessage(`Asset marked ${status.toLowerCase()}`);
+    refreshAll();
+  };
+
+  const generateReport = async () => {
+    if (!selected) return;
+    const result = await workflowApi.auditDiscrepancies(selected.id);
+    setReport(result);
+    setMessage("Discrepancy report generated");
+  };
+
+  const closeAudit = async () => {
+    if (!selected || !window.confirm(`Close audit cycle ${selected.name}?`)) return;
+    await workflowApi.closeAudit(selected.id);
+    setReport(null);
+    setMessage("Audit closed");
+    refreshAll();
+  };
+
+  const auditColumns = [
+    { key: "name", header: "Cycle" },
+    { key: "startsAt", header: "Starts", render: (row) => formatDate(row.startsAt) },
+    { key: "endsAt", header: "Ends", render: (row) => formatDate(row.endsAt) },
+    { key: "items", header: "Assets", render: (row) => row.items?.length || 0 },
+    { key: "status", header: "Status", render: (row) => <Status value={row.status} /> },
+    {
+      key: "actions",
+      header: "",
+      render: (row) => (
+        <Button type="button" variant="secondary" className="px-3 py-1.5" onClick={() => setSelectedId(row.id)}>
+          View
+        </Button>
+      )
+    }
+  ];
+
+  const historyColumns = [
+    { key: "asset", header: "Asset", render: (row) => row.asset?.assetTag || "-" },
+    { key: "action", header: "Action", render: (row) => row.action?.replaceAll("_", " ") },
+    { key: "actor", header: "By", render: (row) => row.actor?.name || "System" },
+    { key: "notes", header: "Notes", render: (row) => row.notes || "-" },
+    { key: "createdAt", header: "Date", render: (row) => formatDateTime(row.createdAt) }
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Audit"
+        description="Create audit cycles, assign auditors, verify assets, capture discrepancies, and close completed audits."
+        actions={
+          <Button variant="secondary" onClick={refreshAll}>
+            <FiRefreshCw /> Refresh
+          </Button>
+        }
+      />
+      {message ? <div className="mb-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div> : null}
+      {[assets.error, users.error, audits.error, history.error].filter(Boolean).map((error) => (
+        <div key={error} className="mb-4 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {error}
+        </div>
+      ))}
+
+      <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <form onSubmit={form.handleSubmit(onCreate)} className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+          <Field label="Audit Cycle" error={form.formState.errors.name?.message}>
+            <input className={inputClass} {...form.register("name")} />
+          </Field>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+            <Field label="Starts" error={form.formState.errors.startsAt?.message}>
+              <input type="datetime-local" className={inputClass} {...form.register("startsAt")} />
+            </Field>
+            <Field label="Ends" error={form.formState.errors.endsAt?.message}>
+              <input type="datetime-local" className={inputClass} {...form.register("endsAt")} />
+            </Field>
+          </div>
+          <Field label="Assets" error={form.formState.errors.assetIds?.message}>
+            <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
+              {assetRows.map((asset) => (
+                <label key={asset.id} className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 text-sm hover:bg-white">
+                  <input type="checkbox" value={asset.id} className="mt-1" {...form.register("assetIds")} />
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-slate-800">{asset.assetTag}</span>
+                    <span className="block truncate text-slate-500">{asset.name}</span>
+                  </span>
+                </label>
+              ))}
+              {!assetRows.length ? <p className="px-2 py-3 text-sm text-slate-500">No assets available</p> : null}
+            </div>
+          </Field>
+          <Button disabled={form.formState.isSubmitting}>
+            <FiClipboard /> Create Audit
+          </Button>
+        </form>
+
+        <section className="grid gap-4">
+          <DataTable columns={auditColumns} rows={rows} empty="No audit cycles found" />
+
+          {selected ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-soft">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                    {formatDate(selected.startsAt)} - {formatDate(selected.endsAt)}
+                  </p>
+                  <h2 className="text-lg font-bold text-slate-950">{selected.name}</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {auditItems.length} assets, {uncheckedItems.length} unchecked, {missingItems.length} missing, {damagedItems.length} damaged
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Status value={selected.status} />
+                  <Button type="button" variant="secondary" onClick={generateReport}>
+                    <FiFileText /> Report
+                  </Button>
+                  {selected.status !== "CLOSED" ? (
+                    <Button type="button" onClick={closeAudit} disabled={uncheckedItems.length > 0}>
+                      <FiCheck /> Close Audit
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-md border border-slate-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Verified</p>
+                  <p className="text-2xl font-bold text-green-700">{auditItems.filter((item) => item.status === "VERIFIED").length}</p>
+                </div>
+                <div className="rounded-md border border-slate-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Missing</p>
+                  <p className="text-2xl font-bold text-red-700">{missingItems.length}</p>
+                </div>
+                <div className="rounded-md border border-slate-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Damaged</p>
+                  <p className="text-2xl font-bold text-amber-700">{damagedItems.length}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                {auditItems.map((item) => (
+                  <div key={item.id} className="rounded-md border border-slate-200 p-3">
+                    <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-slate-950">
+                          {item.asset?.assetTag} - {item.asset?.name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Auditor: {item.auditor?.name || "Unassigned"} · Location: {item.asset?.location || "-"}
+                        </p>
+                      </div>
+                      <Status value={item.status} />
+                    </div>
+                    {selected.status !== "CLOSED" ? (
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                        <select
+                          className={inputClass}
+                          value={auditorByItem[item.id] || item.auditorId || ""}
+                          onChange={(event) => setAuditorByItem((current) => ({ ...current, [item.id]: event.target.value }))}
+                        >
+                          <option value="">Assign auditor</option>
+                          {auditors.map((auditor) => (
+                            <option key={auditor.id} value={auditor.id}>
+                              {auditor.name}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className={inputClass}
+                          placeholder="Notes"
+                          value={notesByItem[item.id] || ""}
+                          onChange={(event) => setNotesByItem((current) => ({ ...current, [item.id]: event.target.value }))}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="secondary" className="px-3 py-2" onClick={() => assignAuditor(item)}>
+                            <FiUserCheck />
+                          </Button>
+                          <Button type="button" className="px-3 py-2" onClick={() => verifyItem(item, "VERIFIED")}>
+                            <FiCheck />
+                          </Button>
+                          <Button type="button" variant="danger" className="px-3 py-2" onClick={() => verifyItem(item, "MISSING")}>
+                            Missing
+                          </Button>
+                          <Button type="button" variant="secondary" className="px-3 py-2" onClick={() => verifyItem(item, "DAMAGED")}>
+                            Damaged
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {report ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-bold text-amber-800">
+                <FiAlertTriangle /> Discrepancy Report
+              </div>
+              <div className="mb-3 grid gap-2 text-sm md:grid-cols-4">
+                <span>Total: {report.summary.total}</span>
+                <span>Verified: {report.summary.verified}</span>
+                <span>Missing: {report.summary.missing}</span>
+                <span>Damaged: {report.summary.damaged}</span>
+              </div>
+              <div className="grid gap-2">
+                {report.items.length ? (
+                  report.items.map((item) => (
+                    <div key={item.id} className="rounded-md bg-white px-3 py-2 text-sm">
+                      <span className="font-semibold">{item.asset?.assetTag}</span> - {item.asset?.name} · {item.status}
+                      {item.notes ? <span className="text-slate-500"> · {item.notes}</span> : null}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-amber-800">No discrepancies found.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <section className="mt-4">
+        <DataTable columns={historyColumns} rows={history.data || []} empty="No audit history found" />
+      </section>
+    </div>
+  );
+}
+
 function GenericWorkflow({ type }) {
   const [title, description] = titles[type] || titles.allocation;
   const assets = useApiResource(() => assetApi.list({ limit: 100 }), []);
@@ -880,5 +1181,6 @@ export default function Workflows({ type = "allocation" }) {
   if (type === "transfers") return <AllocationModule initialTab="transfer" />;
   if (type === "bookings") return <BookingModule />;
   if (type === "maintenance") return <MaintenanceModule />;
+  if (type === "audits") return <AuditModule />;
   return <GenericWorkflow type={type} />;
 }

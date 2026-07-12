@@ -107,11 +107,25 @@ export const maintenanceAttachmentBody = z.object({
     .regex(/^data:[\w/+.-]+\/[\w.+-]+;base64,/i, "Attachment must be a data URL")
 });
 
-export const auditBody = z.object({
-  name: z.string().min(3),
-  startsAt: z.coerce.date(),
-  endsAt: z.coerce.date().optional(),
-  assetIds: z.array(z.string().uuid()).default([])
+export const auditBody = z
+  .object({
+    name: z.string().trim().min(3).max(160),
+    startsAt: z.coerce.date(),
+    endsAt: z.coerce.date().optional(),
+    assetIds: z.array(z.string().uuid()).min(1, "At least one asset is required")
+  })
+  .refine((data) => !data.endsAt || data.endsAt >= data.startsAt, {
+    message: "Audit end must be after start",
+    path: ["endsAt"]
+  });
+
+export const auditAssignBody = z.object({
+  auditorId: z.string().uuid("Auditor is required")
+});
+
+export const auditVerifyBody = z.object({
+  status: z.enum(["VERIFIED", "MISSING", "DAMAGED"]),
+  notes: z.string().trim().max(1000).optional()
 });
 
 export const promoteBody = z.object({

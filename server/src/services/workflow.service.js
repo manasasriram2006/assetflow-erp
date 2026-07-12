@@ -560,14 +560,210 @@ export const uploadMaintenanceAttachment = async (id, { fileName, attachmentData
   });
 };
 
-export const createAudit = async ({ name, startsAt, endsAt, assetIds }) => {
-  return prisma.auditCycle.create({
-    data: {
-      name,
-      startsAt,
-      endsAt,
-      items: { create: assetIds.map((assetId) => ({ assetId })) }
+const auditInclude = {
+  items: {
+    include: {
+      asset: { select: { id: true, assetTag: true, name: true, status: true, location: true } },
+      auditor: { select: { id: true, name: true, email: true } }
     },
-    include: { items: true }
+    orderBy: { createdAt: "asc" }
+  }
+};
+
+const auditActions = [
+  "AUDIT_CYCLE_CREATED",
+  "AUDITOR_ASSIGNED",
+  "AUDIT_ASSET_VERIFIED",
+  "AUDIT_ASSET_MISSING",
+  "AUDIT_ASSET_DAMAGED",
+  "AUDIT_CLOSED"
+];
+
+const auditActionForItemStatus = (status) =>
+  ({
+    VERIFIED: "AUDIT_ASSET_VERIFIED",
+    MISSING: "AUDIT_ASSET_MISSING",
+    DAMAGED: "AUDIT_ASSET_DAMAGED"
+  })[status];
+
+const ensureOpenAuditItem = async (itemId) => {
+  const item = await prisma.auditItem.findUnique({
+    where: { id: itemId },
+    include: {
+      auditCycle: true,
+      asset: { select: { id: true, assetTag: true, name: true, status: true } },
+      auditor: { select: { id: true, name: true, email: true } }
+    }
+  });
+  if (!item) throw notFound("Audit item");
+  if (item.auditCycle.deletedAt) throw notFound("Audit cycle");
+  if (item.auditCycle.status === "CLOSED") throw new HttpError(409, "Closed audits cannot be changed");
+  return item;
+};
+
+export const listAudits = () =>
+  prisma.auditCycle.findMany({
+    where: { deletedAt: null },
+    include: auditInclude,
+    orderBy: { createdAt: "desc" }
+  });
+
+export const getAuditDiscrepancyReport = async (auditId) => {
+  const audit = await prisma.auditCycle.findFirst({
+    where: { id: auditId, deletedAt: null },
+    include: auditInclude
+  });
+  if (!audit) throw notFound("Audit cycle");
+
+  const items = audit.items.filter((item) => ["MISSING", "DAMAGED"].includes(item.status));
+  const missing = items.filter((item) => item.status === "MISSING");
+  const damaged = items.filter((item) => item.status === "DAMAGED");
+  return {
+    audit: { id: audit.id, name: audit.name, status: audit.status, startsAt: audit.startsAt, endsAt: audit.endsAt },
+    summary: {
+      total: audit.items.length,
+      verified: audit.items.filter((item) => item.status === "VERIFIED").length,
+      missing: missing.length,
+      damaged: damaged.length,
+      unchecked: audit.items.filter((item) => item.status === "UNCHECKED").length
+    },
+    items
+  };
+};
+
+export const auditHistory = () =>
+  prisma.assetHistory.findMany({
+    where: { action: { in: auditActions } },
+    include: {
+      asset: { select: { id: true, assetTag: true, name: true } },
+      actor: { select: { id: true, name: true, email: true } }
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100
+  });
+
+export const createAudit = async ({ name, startsAt, endsAt, assetIds }, actorId) => {
+  const assets = await prisma.asset.findMany({
+    where: { id: { in: assetIds }, deletedAt: null },
+    select: { id: true, status: true }
+  });
+  if (assets.length !== new Set(assetIds).size) throw new HttpError(400, "One or more assets are invalid");
+
+  return prisma.$transaction(async (tx) => {
+    const audit = await tx.auditCycle.create({
+      data: {
+        name,
+        startsAt,
+        endsAt,
+        status: "ACTIVE",
+        items: { create: assetIds.map((assetId) => ({ assetId })) }
+      },
+      include: auditInclude
+    });
+    await tx.assetHistory.createMany({
+      data: audit.items.map((item) => ({
+        assetId: item.assetId,
+        actorId,
+        action: "AUDIT_CYCLE_CREATED",
+        fromStatus: item.asset.status,
+        toStatus: item.asset.status,
+        notes: audit.name,
+        changes: { auditCycleId: { from: null, to: audit.id } }
+      }))
+    });
+    return audit;
+  });
+};
+
+export const assignAuditItemAuditor = async (itemId, { auditorId }, actorId) => {
+  const item = await ensureOpenAuditItem(itemId);
+  const auditor = await prisma.user.findFirst({ where: { id: auditorId, deletedAt: null } });
+  if (!auditor) throw notFound("Auditor");
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.auditItem.update({ where: { id: itemId }, data: { auditorId } });
+    await tx.assetHistory.create({
+      data: {
+        assetId: item.assetId,
+        actorId,
+        action: "AUDITOR_ASSIGNED",
+        fromStatus: item.asset.status,
+        toStatus: item.asset.status,
+        notes: `${auditor.name} assigned to ${item.auditCycle.name}`,
+        changes: { auditorId: { from: item.auditorId, to: auditorId } }
+      }
+    });
+    await tx.notification.create({
+      data: {
+        userId: auditorId,
+        type: "AUDIT_DISCREPANCY",
+        title: "Audit assigned",
+        message: `${item.asset.assetTag} is assigned to you for ${item.auditCycle.name}.`
+      }
+    });
+    return tx.auditItem.findUnique({
+      where: { id: updated.id },
+      include: { asset: true, auditor: { select: { id: true, name: true, email: true } } }
+    });
+  });
+};
+
+export const verifyAuditItem = async (itemId, { status, notes }, actorId) => {
+  const item = await ensureOpenAuditItem(itemId);
+  const action = auditActionForItemStatus(status);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.auditItem.update({
+      where: { id: itemId },
+      data: { status, notes, auditorId: item.auditorId || actorId, verifiedAt: new Date() }
+    });
+    await tx.assetHistory.create({
+      data: {
+        assetId: item.assetId,
+        actorId,
+        action,
+        fromStatus: item.asset.status,
+        toStatus: item.asset.status,
+        notes: notes || item.auditCycle.name,
+        changes: { auditItemStatus: { from: item.status, to: status } }
+      }
+    });
+    if (["MISSING", "DAMAGED"].includes(status)) {
+      await tx.notification.create({
+        data: {
+          userId: actorId,
+          type: "AUDIT_DISCREPANCY",
+          title: `Asset ${status.toLowerCase()}`,
+          message: `${item.asset.assetTag} was marked ${status.toLowerCase()} during ${item.auditCycle.name}.`
+        }
+      });
+    }
+    return tx.auditItem.findUnique({
+      where: { id: updated.id },
+      include: { asset: true, auditor: { select: { id: true, name: true, email: true } } }
+    });
+  });
+};
+
+export const closeAudit = async (auditId, actorId) => {
+  const audit = await prisma.auditCycle.findFirst({ where: { id: auditId, deletedAt: null }, include: auditInclude });
+  if (!audit) throw notFound("Audit cycle");
+  if (audit.status === "CLOSED") throw new HttpError(409, "Audit is already closed");
+  const unchecked = audit.items.filter((item) => item.status === "UNCHECKED");
+  if (unchecked.length) throw new HttpError(409, "All audit assets must be verified before closing");
+
+  return prisma.$transaction(async (tx) => {
+    const closed = await tx.auditCycle.update({ where: { id: auditId }, data: { status: "CLOSED", endsAt: audit.endsAt || new Date() } });
+    await tx.assetHistory.createMany({
+      data: audit.items.map((item) => ({
+        assetId: item.assetId,
+        actorId,
+        action: "AUDIT_CLOSED",
+        fromStatus: item.asset.status,
+        toStatus: item.asset.status,
+        notes: audit.name
+      }))
+    });
+    return tx.auditCycle.findUnique({ where: { id: closed.id }, include: auditInclude });
   });
 };

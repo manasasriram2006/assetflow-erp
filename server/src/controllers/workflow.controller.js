@@ -55,16 +55,12 @@ export const maintenance = {
 };
 
 export const audits = {
-  list: async (req, res) =>
-    res.json(await prisma.auditCycle.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } })),
-  create: async (req, res) => res.status(201).json(await workflow.createAudit(req.validated.body)),
-  verifyItem: async (req, res) => {
-    const item = await prisma.auditItem.update({
-      where: { id: req.params.id },
-      data: { status: req.body.status, notes: req.body.notes, auditorId: req.user.id, verifiedAt: new Date() }
-    });
-    res.json(item);
-  },
-  close: async (req, res) =>
-    res.json(await prisma.auditCycle.update({ where: { id: req.params.id }, data: { status: "CLOSED" } }))
+  list: async (req, res) => res.json(await workflow.listAudits()),
+  create: async (req, res) => res.status(201).json(await workflow.createAudit(req.validated.body, req.user.id)),
+  history: async (req, res) => res.json(await workflow.auditHistory()),
+  discrepancyReport: async (req, res) => res.json(await workflow.getAuditDiscrepancyReport(req.params.id)),
+  assignAuditor: async (req, res) =>
+    res.json(await workflow.assignAuditItemAuditor(req.params.id, req.validated.body, req.user.id)),
+  verifyItem: async (req, res) => res.json(await workflow.verifyAuditItem(req.params.id, req.validated.body, req.user.id)),
+  close: async (req, res) => res.json(await workflow.closeAudit(req.params.id, req.user.id))
 };
