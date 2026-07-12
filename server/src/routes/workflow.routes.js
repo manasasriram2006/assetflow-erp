@@ -1,0 +1,70 @@
+import { Router } from "express";
+import { z } from "zod";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { authenticate, authorize } from "../middleware/auth.middleware.js";
+import { validate } from "../middleware/validate.middleware.js";
+import { idParam } from "../validators/common.validators.js";
+import {
+  allocationBody,
+  auditBody,
+  bookingBody,
+  maintenanceBody,
+  transferBody
+} from "../validators/domain.validators.js";
+import { allocations, audits, bookings, maintenance, transfers } from "../controllers/workflow.controller.js";
+
+export const allocationRoutes = Router();
+allocationRoutes.use(authenticate);
+allocationRoutes.get("/", authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"), asyncHandler(allocations.list));
+allocationRoutes.post(
+  "/",
+  authorize("ADMIN", "ASSET_MANAGER"),
+  validate(z.object({ body: allocationBody })),
+  asyncHandler(allocations.create)
+);
+allocationRoutes.post(
+  "/:id/return",
+  authorize("ADMIN", "ASSET_MANAGER"),
+  validate(idParam),
+  asyncHandler(allocations.returnAsset)
+);
+
+export const transferRoutes = Router();
+transferRoutes.use(authenticate);
+transferRoutes.get("/", asyncHandler(transfers.list));
+transferRoutes.post("/", validate(z.object({ body: transferBody })), asyncHandler(transfers.create));
+transferRoutes.post(
+  "/:id/approve",
+  authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
+  validate(idParam),
+  asyncHandler(transfers.approve)
+);
+transferRoutes.post(
+  "/:id/reject",
+  authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
+  validate(idParam),
+  asyncHandler(transfers.reject)
+);
+
+export const bookingRoutes = Router();
+bookingRoutes.use(authenticate);
+bookingRoutes.get("/", asyncHandler(bookings.list));
+bookingRoutes.post("/", validate(z.object({ body: bookingBody })), asyncHandler(bookings.create));
+
+export const maintenanceRoutes = Router();
+maintenanceRoutes.use(authenticate);
+maintenanceRoutes.get("/", asyncHandler(maintenance.list));
+maintenanceRoutes.post("/", validate(z.object({ body: maintenanceBody })), asyncHandler(maintenance.create));
+maintenanceRoutes.patch(
+  "/:id/status",
+  authorize("ADMIN", "ASSET_MANAGER"),
+  validate(idParam),
+  asyncHandler(maintenance.updateStatus)
+);
+
+export const auditRoutes = Router();
+auditRoutes.use(authenticate, authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"));
+auditRoutes.get("/", asyncHandler(audits.list));
+auditRoutes.post("/", validate(z.object({ body: auditBody })), asyncHandler(audits.create));
+auditRoutes.patch("/items/:id", validate(idParam), asyncHandler(audits.verifyItem));
+auditRoutes.post("/:id/close", validate(idParam), asyncHandler(audits.close));

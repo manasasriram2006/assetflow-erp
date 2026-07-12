@@ -1,0 +1,313 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ASSET_MANAGER
+  DEPARTMENT_HEAD
+  EMPLOYEE
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ALLOCATED
+  RESERVED
+  MAINTENANCE
+  LOST
+  RETIRED
+  DISPOSED
+}
+
+enum AllocationStatus {
+  ACTIVE
+  RETURNED
+  OVERDUE
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum BookingStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum MaintenanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  TECHNICIAN_ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum AuditStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum AuditItemStatus {
+  VERIFIED
+  MISSING
+  DAMAGED
+  UNCHECKED
+}
+
+enum NotificationType {
+  ASSET_ASSIGNED
+  TRANSFER_APPROVED
+  MAINTENANCE_APPROVED
+  BOOKING_REMINDER
+  OVERDUE_RETURN
+  AUDIT_DISCREPANCY
+}
+
+model User {
+  id                 String               @id @default(uuid()) @db.Uuid
+  name               String               @db.VarChar(120)
+  email              String               @unique @db.VarChar(255)
+  passwordHash       String
+  role               Role                 @default(EMPLOYEE)
+  departmentId       String?              @db.Uuid
+  department         Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  allocations        Allocation[]         @relation("AllocationUser")
+  requestedTransfers Transfer[]           @relation("TransferRequester")
+  receivedTransfers  Transfer[]           @relation("TransferReceiver")
+  bookings           Booking[]
+  maintenance        MaintenanceRequest[] @relation("Requester")
+  technicianJobs     MaintenanceRequest[] @relation("Technician")
+  notifications      Notification[]
+  auditItems         AuditItem[]          @relation("Auditor")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+
+  @@index([departmentId])
+  @@index([role])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Department {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(120)
+  code        String    @unique @db.VarChar(20)
+  description String?
+  users       User[]
+  assets      Asset[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([deletedAt])
+  @@map("departments")
+}
+
+model Category {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(120)
+  prefix      String    @unique @db.VarChar(12)
+  description String?
+  assets      Asset[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([deletedAt])
+  @@map("categories")
+}
+
+model Asset {
+  id           String               @id @default(uuid()) @db.Uuid
+  assetTag     String               @unique @db.VarChar(40)
+  name         String               @db.VarChar(160)
+  serialNo     String?              @unique @db.VarChar(120)
+  status       AssetStatus          @default(AVAILABLE)
+  value        Decimal?             @db.Decimal(12, 2)
+  purchaseDate DateTime?
+  location     String?              @db.VarChar(160)
+  categoryId   String               @db.Uuid
+  departmentId String?              @db.Uuid
+  category     Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  department   Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  allocations  Allocation[]
+  transfers    Transfer[]
+  bookings     Booking[]
+  maintenance  MaintenanceRequest[]
+  auditItems   AuditItem[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  deletedAt    DateTime?
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([departmentId])
+  @@index([deletedAt])
+  @@index([name])
+  @@map("assets")
+}
+
+model Allocation {
+  id         String           @id @default(uuid()) @db.Uuid
+  assetId    String           @db.Uuid
+  userId     String           @db.Uuid
+  issuedAt   DateTime         @default(now())
+  dueAt      DateTime?
+  returnedAt DateTime?
+  status     AllocationStatus @default(ACTIVE)
+  notes      String?
+  asset      Asset            @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user       User             @relation("AllocationUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
+
+  @@index([assetId])
+  @@index([userId])
+  @@index([status])
+  @@index([dueAt])
+  @@index([deletedAt])
+  @@map("allocations")
+}
+
+model Transfer {
+  id          String         @id @default(uuid()) @db.Uuid
+  assetId     String         @db.Uuid
+  requesterId String         @db.Uuid
+  receiverId  String?        @db.Uuid
+  status      TransferStatus @default(PENDING)
+  reason      String
+  decidedAt   DateTime?
+  completedAt DateTime?
+  asset       Asset          @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requester   User           @relation("TransferRequester", fields: [requesterId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  receiver    User?          @relation("TransferReceiver", fields: [receiverId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  @@index([assetId])
+  @@index([requesterId])
+  @@index([receiverId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("transfers")
+}
+
+model Booking {
+  id        String        @id @default(uuid()) @db.Uuid
+  assetId   String        @db.Uuid
+  userId    String        @db.Uuid
+  startsAt  DateTime
+  endsAt    DateTime
+  purpose   String
+  status    BookingStatus @default(UPCOMING)
+  asset     Asset         @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+
+  @@index([assetId])
+  @@index([userId])
+  @@index([status])
+  @@index([startsAt, endsAt])
+  @@index([deletedAt])
+  @@map("bookings")
+}
+
+model MaintenanceRequest {
+  id           String            @id @default(uuid()) @db.Uuid
+  assetId      String            @db.Uuid
+  requesterId  String            @db.Uuid
+  technicianId String?           @db.Uuid
+  title        String            @db.VarChar(160)
+  description  String
+  status       MaintenanceStatus @default(PENDING)
+  scheduledAt  DateTime?
+  resolvedAt   DateTime?
+  asset        Asset             @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requester    User              @relation("Requester", fields: [requesterId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  technician   User?             @relation("Technician", fields: [technicianId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  deletedAt    DateTime?
+
+  @@index([assetId])
+  @@index([requesterId])
+  @@index([technicianId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([deletedAt])
+  @@map("maintenance_requests")
+}
+
+model AuditCycle {
+  id        String      @id @default(uuid()) @db.Uuid
+  name      String      @db.VarChar(160)
+  startsAt  DateTime
+  endsAt    DateTime?
+  status    AuditStatus @default(DRAFT)
+  items     AuditItem[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  deletedAt DateTime?
+
+  @@index([status])
+  @@index([startsAt])
+  @@index([deletedAt])
+  @@map("audit_cycles")
+}
+
+model AuditItem {
+  id           String          @id @default(uuid()) @db.Uuid
+  auditCycleId String          @db.Uuid
+  assetId      String          @db.Uuid
+  auditorId    String?         @db.Uuid
+  status       AuditItemStatus @default(UNCHECKED)
+  notes        String?
+  verifiedAt   DateTime?
+  auditCycle   AuditCycle      @relation(fields: [auditCycleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  asset        Asset           @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  auditor      User?           @relation("Auditor", fields: [auditorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([auditCycleId, assetId])
+  @@index([assetId])
+  @@index([auditorId])
+  @@index([status])
+  @@map("audit_items")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  title     String           @db.VarChar(160)
+  message   String
+  readAt    DateTime?
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+  @@index([type])
+  @@index([readAt])
+  @@index([deletedAt])
+  @@map("notifications")
+}
