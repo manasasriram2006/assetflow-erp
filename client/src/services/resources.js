@@ -49,10 +49,13 @@ export const reportsApi = {
 
 export const workflowApi = {
   allocations: () => api.get("/allocations").then((res) => res.data),
+  allocationHistory: () => api.get("/allocations/history").then((res) => res.data),
   allocate: (payload) => api.post("/allocations", payload).then((res) => res.data),
   returnAsset: (id) => api.post(`/allocations/${id}/return`).then((res) => res.data),
   transfers: () => api.get("/transfers").then((res) => res.data),
   requestTransfer: (payload) => api.post("/transfers", payload).then((res) => res.data),
+  approveTransfer: (id, payload = {}) => api.post(`/transfers/${id}/approve`, payload).then((res) => res.data),
+  rejectTransfer: (id, payload = {}) => api.post(`/transfers/${id}/reject`, payload).then((res) => res.data),
   bookings: () => api.get("/bookings").then((res) => res.data),
   book: (payload) => api.post("/bookings", payload).then((res) => res.data),
   maintenance: () => api.get("/maintenance").then((res) => res.data),

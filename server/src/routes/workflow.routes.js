@@ -9,13 +9,19 @@ import {
   auditBody,
   bookingBody,
   maintenanceBody,
-  transferBody
+  transferBody,
+  transferDecisionBody
 } from "../validators/domain.validators.js";
 import { allocations, audits, bookings, maintenance, transfers } from "../controllers/workflow.controller.js";
 
 export const allocationRoutes = Router();
 allocationRoutes.use(authenticate);
 allocationRoutes.get("/", authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"), asyncHandler(allocations.list));
+allocationRoutes.get(
+  "/history",
+  authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
+  asyncHandler(allocations.history)
+);
 allocationRoutes.post(
   "/",
   authorize("ADMIN", "ASSET_MANAGER"),
@@ -36,13 +42,13 @@ transferRoutes.post("/", validate(z.object({ body: transferBody })), asyncHandle
 transferRoutes.post(
   "/:id/approve",
   authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
-  validate(idParam),
+  validate(z.object({ params: idParam.shape.params, body: transferDecisionBody.default({}) })),
   asyncHandler(transfers.approve)
 );
 transferRoutes.post(
   "/:id/reject",
   authorize("ADMIN", "ASSET_MANAGER", "DEPARTMENT_HEAD"),
-  validate(idParam),
+  validate(z.object({ params: idParam.shape.params, body: transferDecisionBody.default({}) })),
   asyncHandler(transfers.reject)
 );
 

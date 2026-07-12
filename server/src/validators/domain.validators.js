@@ -38,7 +38,7 @@ export const allocationBody = z
     assetId: z.string().uuid(),
     userId: z.string().uuid(),
     dueAt: z.coerce.date().optional(),
-    notes: z.string().optional()
+    notes: z.string().trim().max(500).optional()
   })
   .refine((data) => !data.dueAt || data.dueAt > new Date(), {
     message: "Return date must be in the future",
@@ -47,8 +47,12 @@ export const allocationBody = z
 
 export const transferBody = z.object({
   assetId: z.string().uuid(),
-  receiverId: z.string().uuid().optional(),
-  reason: z.string().min(5)
+  receiverId: z.string().uuid("Receiver is required"),
+  reason: z.string().trim().min(5).max(500)
+});
+
+export const transferDecisionBody = z.object({
+  notes: z.string().trim().max(500).optional()
 });
 
 export const bookingBody = z

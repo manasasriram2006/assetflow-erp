@@ -3,22 +3,32 @@ import * as workflow from "../services/workflow.service.js";
 
 export const allocations = {
   list: async (req, res) =>
-    res.json(await prisma.allocation.findMany({ include: { asset: true, user: true }, orderBy: { issuedAt: "desc" } })),
+    res.json(
+      await prisma.allocation.findMany({
+        where: { deletedAt: null },
+        include: { asset: true, user: true },
+        orderBy: { issuedAt: "desc" }
+      })
+    ),
   create: async (req, res) => res.status(201).json(await workflow.allocateAsset(req.validated.body, req.user.id)),
-  returnAsset: async (req, res) => res.json(await workflow.returnAsset(req.params.id, req.user.id))
+  returnAsset: async (req, res) => res.json(await workflow.returnAsset(req.params.id, req.user.id)),
+  history: async (req, res) => res.json(await workflow.allocationHistory())
 };
 
 export const transfers = {
   list: async (req, res) =>
     res.json(
       await prisma.transfer.findMany({
+        where: { deletedAt: null },
         include: { asset: true, requester: true, receiver: true },
         orderBy: { createdAt: "desc" }
       })
     ),
-  create: async (req, res) => res.status(201).json(await workflow.requestTransfer(req.validated.body, req.user.id)),
-  approve: async (req, res) => res.json(await workflow.decideTransfer(req.params.id, "APPROVED")),
-  reject: async (req, res) => res.json(await workflow.decideTransfer(req.params.id, "REJECTED"))
+  create: async (req, res) => res.status(201).json(await workflow.requestTransfer(req.validated.body, req.user)),
+  approve: async (req, res) =>
+    res.json(await workflow.decideTransfer(req.params.id, "APPROVED", req.user.id, req.validated?.body?.notes)),
+  reject: async (req, res) =>
+    res.json(await workflow.decideTransfer(req.params.id, "REJECTED", req.user.id, req.validated?.body?.notes))
 };
 
 export const bookings = {
