@@ -12,7 +12,37 @@ const daysFrom = (date, days) => {
   return next;
 };
 
-export const dashboard = async () => {
+const notificationTypes = [
+  "ASSET_ASSIGNED",
+  "TRANSFER_APPROVED",
+  "MAINTENANCE_APPROVED",
+  "BOOKING_REMINDER",
+  "OVERDUE_RETURN",
+  "AUDIT_DISCREPANCY"
+];
+
+const notificationCategory = (type) =>
+  ({
+    ASSET_ASSIGNED: "ALLOCATION",
+    OVERDUE_RETURN: "ALLOCATION",
+    BOOKING_REMINDER: "BOOKING",
+    MAINTENANCE_APPROVED: "MAINTENANCE",
+    AUDIT_DISCREPANCY: "AUDIT",
+    TRANSFER_APPROVED: "TRANSFER"
+  })[type] || "GENERAL";
+
+const notificationSummary = (notifications) => {
+  const countsByType = Object.fromEntries(notificationTypes.map((type) => [type, 0]));
+  const countsByCategory = { ALLOCATION: 0, BOOKING: 0, MAINTENANCE: 0, AUDIT: 0, TRANSFER: 0 };
+  for (const notification of notifications) {
+    countsByType[notification.type] = (countsByType[notification.type] || 0) + 1;
+    const category = notificationCategory(notification.type);
+    countsByCategory[category] = (countsByCategory[category] || 0) + 1;
+  }
+  return { countsByType, countsByCategory };
+};
+
+export const dashboard = async (userId) => {
   const todayStart = startOfToday();
   const todayEnd = daysFrom(todayStart, 1);
   const nextWeek = daysFrom(todayStart, 7);
@@ -30,7 +60,8 @@ export const dashboard = async () => {
     recentBookings,
     recentMaintenance,
     notifications,
-    unreadNotifications
+    unreadNotifications,
+    notificationCounts
   ] = await Promise.all([
     prisma.asset.groupBy({
       by: ["status"],
@@ -132,12 +163,16 @@ export const dashboard = async () => {
       }
     }),
     prisma.notification.findMany({
-      where: { deletedAt: null },
+      where: { userId, deletedAt: null },
       take: 6,
       orderBy: { createdAt: "desc" },
       select: { id: true, type: true, title: true, message: true, readAt: true, createdAt: true }
     }),
-    prisma.notification.count({ where: { deletedAt: null, readAt: null } })
+    prisma.notification.count({ where: { userId, deletedAt: null, readAt: null } }),
+    prisma.notification.findMany({
+      where: { userId, deletedAt: null },
+      select: { type: true }
+    })
   ]);
 
   const assetsAvailable = assetStatus.find((row) => row.status === "AVAILABLE")?._count || 0;
@@ -217,7 +252,8 @@ export const dashboard = async () => {
     recentActivities,
     notifications: {
       unread: unreadNotifications,
-      items: notifications
+      items: notifications,
+      ...notificationSummary(notificationCounts)
     },
     meta: {
       generatedAt: new Date(),

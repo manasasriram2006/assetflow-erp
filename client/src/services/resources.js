@@ -76,6 +76,8 @@ export const workflowApi = {
 };
 
 export const notificationApi = {
-  list: () => api.get("/notifications").then((res) => res.data),
-  markRead: (id) => api.patch(`/notifications/${id}/read`).then((res) => res.data)
+  list: (params) => api.get("/notifications", { params }).then((res) => res.data),
+  unreadCount: () => api.get("/notifications/unread-count").then((res) => res.data),
+  markRead: (id) => api.patch(`/notifications/${id}/read`).then((res) => res.data),
+  markAllRead: () => api.patch("/notifications/read-all").then((res) => res.data)
 };

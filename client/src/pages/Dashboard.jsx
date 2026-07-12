@@ -33,6 +33,14 @@ import { formatDate, statusTone } from "../utils/format";
 
 const chartColors = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#0f766e", "#7c3aed", "#64748b"];
 
+const notificationCategories = [
+  ["ALLOCATION", "Allocation"],
+  ["BOOKING", "Booking"],
+  ["MAINTENANCE", "Maintenance"],
+  ["AUDIT", "Audit"],
+  ["TRANSFER", "Transfer"]
+];
+
 const labelize = (value = "") =>
   String(value)
     .toLowerCase()
@@ -56,6 +64,7 @@ export default function Dashboard() {
   const departmentSummary = data?.charts?.departmentSummary || [];
   const recentActivities = data?.recentActivities || [];
   const notifications = data?.notifications?.items || [];
+  const notificationCounts = data?.notifications?.countsByCategory || {};
 
   const quickActions = [
     { to: "/asset-registration", label: "Register Asset", icon: FiPlusCircle },
@@ -214,6 +223,18 @@ export default function Dashboard() {
             <Link to="/notifications" className="text-sm font-semibold text-primary">
               View all
             </Link>
+          </div>
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5 xl:grid-cols-2">
+            {notificationCategories.map(([key, label]) => (
+              <Link
+                key={key}
+                to="/notifications"
+                className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm hover:border-blue-200 hover:bg-blue-50"
+              >
+                <span className="block text-xs font-semibold text-slate-500">{label}</span>
+                <span className="mt-1 block text-lg font-bold text-slate-950">{notificationCounts[key] || 0}</span>
+              </Link>
+            ))}
           </div>
           <div className="grid gap-3">
             {notifications.length

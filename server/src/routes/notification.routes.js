@@ -9,4 +9,6 @@ export const notificationRoutes = Router();
 
 notificationRoutes.use(authenticate);
 notificationRoutes.get("/", asyncHandler(controller.listNotifications));
+notificationRoutes.get("/unread-count", asyncHandler(controller.unreadCount));
+notificationRoutes.patch("/read-all", asyncHandler(controller.markAllRead));
 notificationRoutes.patch("/:id/read", validate(idParam), asyncHandler(controller.markRead));

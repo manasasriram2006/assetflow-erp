@@ -1,7 +1,7 @@
 import * as reportService from "../services/report.service.js";
 
 export const dashboard = async (req, res) => {
-  res.json(await reportService.dashboard());
+  res.json(await reportService.dashboard(req.user.id));
 };
 
 export const csv = async (req, res) => {
